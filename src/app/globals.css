@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+@theme {
+  --color-brand-700: #086e89; /* primary / solid buttons */
+  --color-brand-600: #298b9a; /* hover / focus ring / links */
+  --color-brand-300: #73c2bd; /* subtle accents */
+  --color-surface:   #ffffff; /* cards/header */
+  --color-canvas:    #e5eeee; /* page background */
+  --color-ink:       #404141; /* text */
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+@layer base {
+  @media (min-width: 1280px) {
+    html { 
+      
+      scrollbar-gutter: stable; 
+    } 
+      /* reserve the gutter so nothing nudges */
+    /* leave body (or your scroll container) at overflow-y:auto */
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
