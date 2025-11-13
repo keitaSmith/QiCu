@@ -51,15 +51,22 @@ export function update(p: FhirPatient, patch: Partial<NewPatientForm>): FhirPati
 
   const email  = patch.email  ?? p.telecom?.find(t => t.system === 'email')?.value
   const mobile = patch.mobile ?? p.telecom?.find(t => t.system === 'phone')?.value
+  const gender = patch.gender??p.gender??"prefer_not_to_say"
 
   const updated: FhirPatient = {
     ...p,
     name: [{ use: 'official', family: lastName, given: [firstName], text: `${firstName} ${lastName}`.trim() }],
     birthDate: dob,
+    
     telecom: [
       ...(email  ? [{ system: 'email' as const, value: email,  use: 'home'   as const }] : []),
       ...(mobile ? [{ system: 'phone' as const, value: mobile, use: 'mobile' as const }] : []),
     ],
+    gender,
+    meta: {
+      ...p.meta,
+      lastUpdated: new Date().toISOString(), // ✅ reflect that we changed it
+    },
   }
 
   const withProfile = ensureProfile(updated)

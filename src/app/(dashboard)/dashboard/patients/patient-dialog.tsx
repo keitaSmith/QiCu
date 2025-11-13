@@ -29,6 +29,8 @@ export function PatientDialog({
   const [email, setEmail] = useState('')
   const [mobile, setMobile] = useState('')
   const [inviteMode, setInviteMode] = useState<'profileOnly' | 'profileAndInvite'>('profileOnly')
+  const [gender, setGender] = useState<'male' | 'female' | 'other' | 'prefer_not_to_say'>('prefer_not_to_say')
+
   const [error, setError] = useState<string | null>(null)
 
   const isEdit = mode === 'edit'
@@ -45,6 +47,7 @@ export function PatientDialog({
           t => t.system === 'phone' && (t.use === 'mobile' || !t.use)
         )?.value ?? ''
       )
+      setGender((initialPatient.gender as any) ?? 'prefer_not_to_say')
       setError(null)
     } else if (open && !isEdit) {
       setFirstName('')
@@ -52,21 +55,25 @@ export function PatientDialog({
       setDob('')
       setEmail('')
       setMobile('')
+      setGender('prefer_not_to_say')
       setInviteMode('profileOnly')
       setError(null)
     }
-  }, [open, isEdit, initialPatient])
+  }, [open, initialPatient, isEdit])
+
 
   const form: NewPatientForm = useMemo(
     () => ({
       firstName,
       lastName,
+      gender,
       dob,
       email: email || undefined,
       mobile: mobile || undefined,
+       
       inviteMode,
     }),
-    [firstName, lastName, dob, email, mobile, inviteMode]
+    [firstName, lastName,gender, dob, email, mobile, inviteMode]
   )
 
   function handleSubmit(e: React.FormEvent) {
@@ -128,6 +135,19 @@ export function PatientDialog({
                   className="w-full rounded-md border px-3 py-2 text-sm outline-none"
                 />
               </div>
+              <div>
+              <label className="mb-1 block text-xs text-ink/60">Gender</label>
+                <select
+                  value={gender}
+                  onChange={e => setGender(e.target.value as any)}
+                  className="w-full rounded-md border px-3 py-2 text-sm outline-none"
+                >
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                  <option value="prefer_not_to_say">Prefer not to say</option>
+                </select>
+            </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

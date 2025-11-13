@@ -37,7 +37,7 @@ export type PatientContact = {
   name?: HumanName
   telecom?: ContactPoint[]
   address?: Address
-  gender?: 'male'|'female'|'other'|'unknown'
+  gender?: 'male'|'female'|'other'|'prefer_not_to_say'
   organization?: Reference
   period?: Period
 }
@@ -66,7 +66,7 @@ export type FhirPatient = {
   name: HumanName[]                       // at least one name entry
   telecom?: ContactPoint[]
 
-  gender?: 'male'|'female'|'other'|'unknown'
+  gender?: 'male'|'female'|'other'|'prefer_not_to_say'
   birthDate?: string                      // YYYY-MM-DD (date-only)
   deceasedBoolean?: boolean
   deceasedDateTime?: string

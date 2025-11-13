@@ -65,7 +65,7 @@ const PatientContact = z.object({
   name: HumanName.optional(),
   telecom: z.array(ContactPoint).optional(),
   address: Address.optional(),
-  gender: z.enum(['male','female','other','unknown']).optional(),
+  gender: z.enum(['male','female','other','prefer_not_to_say']).optional(),
   organization: reference.optional(),
   period: Period.optional(),
 })
@@ -98,8 +98,10 @@ export const FhirPatientSchema = z.object({
   name: z.array(HumanName).min(1),
   telecom: z.array(ContactPoint).optional(),
 
-  gender: z.enum(['male','female','other','unknown']).optional(),
+  gender: z.enum(['male', 'female', 'other', 'prefer_not_to_say']).optional(),
+
   birthDate: isoDateOnly.optional(),
+  
   deceasedBoolean: z.boolean().optional(),
   deceasedDateTime: z.string().datetime().optional(),
 

@@ -1,4 +1,5 @@
 // /data/patients.ts
+import { FhirPatientSchema } from '@/schemas/fhir/patient'
 import type { FhirPatient } from '@/models/fhir/patient'
 
 export const PATIENTS: FhirPatient[] = [
@@ -65,4 +66,4 @@ export const PATIENTS: FhirPatient[] = [
     communication: [{ language: { text: 'it-CH' }, preferred: true }],
   },
 ]
-
+PATIENTS.forEach(p => FhirPatientSchema.parse(p));

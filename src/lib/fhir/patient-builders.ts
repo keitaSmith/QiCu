@@ -6,9 +6,10 @@ import { v4 as uuidv4 } from 'uuid'
 export type NewPatientForm = {
   firstName: string
   lastName: string
-  dob: string            // "YYYY-MM-DD"
+  dob: string
   email?: string
-  mobile?: string        // prefer E.164 "+41..."
+  mobile?: string
+  gender: 'male' | 'female' | 'other' | 'prefer_not_to_say'
   inviteMode: 'profileOnly' | 'profileAndInvite'
 }
 
@@ -28,6 +29,7 @@ export function buildPatientFromForm(input: NewPatientForm, opts?: { createdByUs
     name: [{ use: 'official', family: input.lastName.trim(), given: [input.firstName.trim()], text: nameText }],
     telecom,
     birthDate: input.dob,
+    gender: input.gender,
     communication: opts?.locale ? [{ language: { text: opts.locale }, preferred: true }] : undefined,
     extension: [
       { url: 'https://qicu.app/fhir/StructureDefinition/invitation', valueString: input.inviteMode === 'profileAndInvite' ? 'sent' : 'none' },
