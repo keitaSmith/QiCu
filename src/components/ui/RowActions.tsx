@@ -28,7 +28,7 @@ type BaseProps = {
 
 /** Shared text action style (matches Patients “Edit”) */
 const textActionBtn =
-  'px-2.5 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-300/15 rounded-none focus:outline-none'
+  'px-2.5 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-300/10 rounded-none focus:outline-none'
 
 /** Icon button: no focus, subtle hover */
 const iconBtn =
@@ -163,6 +163,7 @@ export function PatientsActionButtons({
   )
 }
 
+
 /** Bookings page: View (text) + Eye + extras: Reschedule, Cancel, Set no-show, Delete */
 export function BookingActionButtons({
   onView,
@@ -193,6 +194,36 @@ export function BookingActionButtons({
     <ActionButtons
       primaryLabel="View"
       onPrimary={onView}
+      onView={onView}
+      extras={merged}
+      onDelete={onDelete}
+      className={className}
+    />
+  )
+}
+
+/** Sessions page: Edit (text) + Eye + extras: per-row Add session, Delete */
+export function SessionActionButtons({
+  onEdit,
+  onView,
+  onDelete,
+  extras,
+  className,
+}: {
+  onEdit: () => void
+  onView: () => void
+  onDelete: () => void
+  extras?: ExtraItem[]
+  className?: string
+}) {
+  const baseExtras: ExtraItem[] = [{ label: 'Edit session', onSelect: onEdit }]
+
+  const merged = extras ? [...baseExtras, ...extras] : baseExtras
+
+  return (
+    <ActionButtons
+      primaryLabel="Edit"
+      onPrimary={onEdit}
       onView={onView}
       extras={merged}
       onDelete={onDelete}

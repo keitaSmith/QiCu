@@ -1,6 +1,7 @@
 // app/(dashboard)/layout.tsx
 'use client'
 
+import { SnackbarProvider } from '@/components/ui/Snackbar'
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -27,6 +28,7 @@ import {
   UserGroupIcon,
   XMarkIcon,
   CalendarDaysIcon,
+  ClipboardDocumentCheckIcon 
 } from '@heroicons/react/24/outline'
 import { ChevronDownIcon, MagnifyingGlassIcon } from '@heroicons/react/20/solid'
 
@@ -36,6 +38,7 @@ import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
 const navigation = [
   { name: 'Patients', href: '/dashboard/patients', icon: UserGroupIcon },
   { name: 'Bookings', href: '/dashboard/bookings', icon: CalendarDaysIcon },
+  { name: 'Sessions', href: '/dashboard/sessions', icon: ClipboardDocumentCheckIcon  },
   { name: 'Team', href: '/dashboard/team', icon: UsersIcon },
   { name: 'Projects', href: '/dashboard/projects', icon: FolderIcon },
   { name: 'Calendar', href: '/dashboard/calendar', icon: CalendarIcon },
@@ -63,6 +66,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname()
 
   return (
+    <SnackbarProvider>
     <div>
       {/* MOBILE SIDEBAR */}
       <Dialog open={sidebarOpen} onClose={setSidebarOpen} className="relative z-50 lg:hidden">
@@ -357,5 +361,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
     </div>
+    </SnackbarProvider>
   )
 }
