@@ -12,7 +12,17 @@ const updateSessionSchema = z.object({
   chiefComplaint: z.string().min(1).optional(),
   techniques: z.array(z.string()).optional(),
 })
+// Get /api/sessions/:sessionId
+export async function GET(req: NextRequest, { params }: RouteParams) {
+  const { sessionId } = await params
+  const session = sessionsStore.find(s => s.id === sessionId)
 
+  if (!session) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  return NextResponse.json(session)
+}
 // PATCH /api/sessions/:sessionId
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const { sessionId } = await params

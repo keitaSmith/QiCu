@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
-
+//import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { SearchField } from '@/components/ui/SearchField'
 import { PATIENTS } from '@/data/patients'
 import type { Session } from '@/models/session'
 import { dateFmt as dt, timeFmt } from '@/lib/dates'
@@ -12,7 +12,8 @@ import { SessionActionButtons } from '@/components/ui/RowActions'
 import { SessionDialog } from '@/components/sessions/SessionDialog'
 import { useSnackbar } from '@/components/ui/Snackbar'
 import { TableSkeleton } from '@/components/ui/TableSkeleton'
-
+import { useRightPanel } from '@/components/layout/RightPanelContext'
+import { SessionDetailPanel } from '@/components/sessions/SessionDetailPanel'
 export default function SessionsPage() {
   const [q, setQ] = useState('')
   const [sessions, setSessions] = useState<Session[]>([])
@@ -22,6 +23,12 @@ export default function SessionsPage() {
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
   const [editingSession, setEditingSession] = useState<Session | null>(null)
   const { showSnackbar } = useSnackbar()
+  const [selectedSession, setSelectedSession] = useState<Session | null>(null)
+  const { setRightPanelContent } = useRightPanel()
+
+  useEffect(() => {
+    setRightPanelContent(null)
+  }, [setRightPanelContent])
 
   // Patient options for the "New session" dialog when opened from this page
   const patientOptions = useMemo(
@@ -114,6 +121,18 @@ export default function SessionsPage() {
     // Later: also call DELETE /api/sessions/:id once that exists.
   }
 
+  function showSessionDetails(session: Session) {
+    const patientName = names.get(session.patientId) ?? session.patientId
+
+    setSelectedSession(session)
+    setRightPanelContent(
+      <SessionDetailPanel
+        session={session}
+        patientName={patientName}
+      />,
+    )
+  }
+
   return (
     <div className="space-y-4">
       {/* Header / toolbar – same responsive pattern as Bookings/Patients */}
@@ -122,15 +141,12 @@ export default function SessionsPage() {
 
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           {/* Search – full width on mobile */}
-          <div className="relative w-full sm:w-auto">
-            <MagnifyingGlassIcon className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/50" />
-            <input
-              value={q}
-              onChange={e => setQ(e.target.value)}
-              placeholder="Search patient, complaint, techniques…"
-              className="w-full sm:w-72 rounded-lg border border-brand-300/50 bg-surface pl-7 pr-3 py-2 text-sm text-ink outline-none placeholder:text-ink/50"
-            />
-          </div>
+          <SearchField
+            value={q}
+            onChange={setQ}
+            placeholder="Search patient, complaint, techniques…"
+            inputClassName="sm:w-72"
+          />
 
           {/* New session */}
           <button
@@ -149,12 +165,12 @@ export default function SessionsPage() {
           <TableEl>
             <THead>
               <Tr>
-                <Th>Patient</Th>
+                <Th className='rounded-tl-md rounded-bl-md'>Patient</Th>
                 <Th>Date</Th>
                 <Th>Time</Th>
                 <Th>Chief complaint</Th>
                 <Th>Techniques</Th>
-                <Th className="text-right">Actions</Th>
+                <Th className="text-right rounded-tr-md rounded-br-md">Actions</Th>
               </Tr>
             </THead>
             <TBody>
@@ -178,7 +194,7 @@ export default function SessionsPage() {
                       <Td className="text-right">
                         <SessionActionButtons
                           onEdit={() => handleEdit(s)}
-                          onView={() => alert('TODO: open view session')}
+                          onView={() => showSessionDetails(s)}
                           onDelete={() => handleDelete(s.id)}
                           extras={[
                             {
@@ -259,7 +275,7 @@ export default function SessionsPage() {
                 <div className="mt-3 flex justify-end">
                   <SessionActionButtons
                     onEdit={() => handleEdit(s)}
-                    onView={() => alert('TODO: open view session')}
+                    onView={() => showSessionDetails(s)}
                     onDelete={() => handleDelete(s.id)}
                     extras={[
                       {

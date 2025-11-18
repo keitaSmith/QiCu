@@ -5,6 +5,7 @@ import { Dialog, DialogBackdrop, DialogPanel } from '@headlessui/react'
 
 import type { Session } from '@/models/session'
 import { useSnackbar } from '@/components/ui/Snackbar'
+import { DateTimeField } from '@/components/ui/DateTimeField'
 
 type PatientOption = { id: string; name: string }
 
@@ -232,16 +233,14 @@ export function SessionDialog({
                 </div>
               ) : null}
 
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-ink">Session start</label>
-                <input
-                  type="datetime-local"
-                  required
-                  value={startLocal}
-                  onChange={e => setStartLocal(e.target.value)}
-                  className="w-full rounded-lg border border-brand-300/60 bg-white px-3 py-2 text-sm text-ink shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                />
-              </div>
+              <DateTimeField
+                label="Session start"
+                name="startDateTime"
+                value={startLocal}
+                onChange={setStartLocal}
+                required
+                helperText="Local date and time of the treatment session."
+              />
 
               <div className="space-y-1">
                 <label className="block text-sm font-medium text-ink">Chief complaint</label>

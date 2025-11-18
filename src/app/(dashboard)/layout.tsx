@@ -2,7 +2,7 @@
 'use client'
 
 import { SnackbarProvider } from '@/components/ui/Snackbar'
-import { useState } from 'react'
+import { useState, ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -15,6 +15,7 @@ import {
   MenuItems,
   TransitionChild,
 } from '@headlessui/react'
+import { RightPanelContext } from '@/components/layout/RightPanelContext'
 import {
   Bars3Icon,
   BellIcon,
@@ -57,6 +58,7 @@ const userNavigation = [
   { name: 'Sign out', href: '#' },
 ]
 
+
 function classNames(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(' ')
 }
@@ -64,10 +66,16 @@ function classNames(...classes: (string | false | null | undefined)[]) {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pathname = usePathname()
-
+  const showRightPanel = [
+  '/dashboard/patients',
+  '/dashboard/sessions',
+  '/dashboard/bookings',
+].includes(pathname)
+  const [rightPanelContent, setRightPanelContent] = useState<ReactNode | null>(null)
   return (
     <SnackbarProvider>
     <div>
+      <RightPanelContext.Provider value={{ setRightPanelContent }}>
       {/* MOBILE SIDEBAR */}
       <Dialog open={sidebarOpen} onClose={setSidebarOpen} className="relative z-50 lg:hidden">
         <DialogBackdrop
@@ -349,18 +357,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
 
       {/* RIGHT COLUMN (third column) */}
-      <aside className="fixed top-16 bottom-0 right-0 hidden w-96 overflow-y-auto border-l border-brand-300/30 bg-surface px-4 py-6 sm:px-6 lg:px-8 xl:block z-30">
-        <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-ink">Right panel</h2>
-          <div className="rounded-2xl border border-brand-300/30 bg-surface p-4">
-            <p className="text-sm text-ink/70">Put notifications, details, or quick stats here.</p>
-          </div>
-          <div className="rounded-2xl border border-brand-300/30 bg-surface p-4">
-            <p className="text-sm text-ink/70">This column stays fixed and scrollable.</p>
-          </div>
+      
+        <div className="min-h-screen bg-surface text-ink">
+          {/* existing nav / shell / main content stays as-is */}
+          {/* ... */}
+
+          {/* Your existing main content wrapper around {children} */}
+          {/* e.g. something like: */}
+          {/* <div className="lg:pl-72">
+               <main> {children} </main>
+              </div> */}
+
+          {/* RIGHT COLUMN (third column) */}
+          {showRightPanel && (
+  <aside className="fixed top-16 bottom-0 right-0 hidden w-80 overflow-y-auto border-l border-brand-300/30 bg-surface px-4 py-6 sm:px-6 lg:px-8 xl:block z-30">
+    {rightPanelContent ? (
+      <div className="space-y-4">
+        {rightPanelContent}
+      </div>
+    ) : (
+      <div className="space-y-4">
+        <h2 className="text-sm font-semibold text-ink">Details</h2>
+        <div className="rounded-2xl border border-brand-300/30 bg-surface p-4">
+          <p className="text-sm text-ink/70">
+            Select a patient, booking, or session to see details here.
+          </p>
         </div>
-      </aside>
-    </div>
+      </div>
+    )}
+  </aside>
+)}
+        </div>
+      </RightPanelContext.Provider>
+      </div>
     </SnackbarProvider>
   )
 }

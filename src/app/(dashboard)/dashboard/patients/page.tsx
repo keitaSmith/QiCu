@@ -1,7 +1,10 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { MagnifyingGlassIcon, FunnelIcon } from '@heroicons/react/24/outline'
+import { useMemo, useState,useEffect } from 'react'
+import { useRightPanel } from '@/components/layout/RightPanelContext'
+import { PatientDetailPanel } from '@/components/patients/PatientDetailPanel'
+import { FunnelIcon } from '@heroicons/react/24/outline'
+import { SearchField } from '@/components/ui/SearchField'
 
 import { PATIENTS } from '@/data/patients'
 import { BOOKINGS } from '@/data/bookings'
@@ -20,17 +23,33 @@ import { TableFrame, TableEl, THead, TBody, Tr, Th, Td } from '@/components/ui/Q
 import { PatientsActionButtons } from '@/components/ui/RowActions'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 
+import { useRouter } from 'next/navigation'
+import { useIsDesktop } from '@/lib/useIsDesktop'
+
 // Toggle this to inspect what's detected as "today"
 const DEBUG_TODAY = false
+
+
+
 
 function classNames(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ')
 }
 
 export default function PatientsPage() {
+  const router = useRouter()
+  const isDesktop = useIsDesktop()
   const [q, setQ] = useState('')
   const [onlyToday, setOnlyToday] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+
+  const [selectedPatient, setSelectedPatient] = useState<FhirPatient | null>(null)
+  const { setRightPanelContent } = useRightPanel()
+  
+  // Clear the right panel when this page mounts
+  useEffect(() => {
+    setRightPanelContent(null)
+  }, [setRightPanelContent])
 
   // Local working list (starts from seeds)
   const [patients, setPatients] = useState<FhirPatient[]>(() => [...PATIENTS])
@@ -113,6 +132,18 @@ export default function PatientsPage() {
 const bookingToday=(p:FhirPatient)=>{
   return p.id ? todaysByPatient.has(p.id) : false
 }
+
+function handleViewPatient(p: FhirPatient) {
+  if (isDesktop) {
+    const bookingsForPatient = BOOKINGS.filter(b => b.patientId === p.id)
+    setSelectedPatient(p)
+    setRightPanelContent(
+      <PatientDetailPanel patient={p} bookingsForPatient={bookingsForPatient} />,
+    )
+  } else {
+    router.push(`/dashboard/patients/${p.id}`)
+  }
+}
   return (
     <div className="space-y-4">
       {/* Header / toolbar */}
@@ -120,15 +151,11 @@ const bookingToday=(p:FhirPatient)=>{
         <h1 className="text-xl font-semibold text-ink">Patients</h1>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           {/* Search */}
-          <div className="relative sm:w-auto">
-            <MagnifyingGlassIcon className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-ink/50" />
-            <input
-              value={q}
-              onChange={e => setQ(e.target.value)}
-              placeholder="Search name, email, mobile…"
-              className="w-full sm:w-64 rounded-lg bg-surface pl-8 pr-3 py-2 text-sm text-ink outline-none placeholder:text-ink/50"
-            />
-          </div>
+          <SearchField
+            value={q}
+            onChange={setQ}
+            placeholder="Search name, email, mobile…"
+          />
 
           {/* Today filter */}
           <button
@@ -191,11 +218,11 @@ const bookingToday=(p:FhirPatient)=>{
         <TableEl>
           <THead>
             <Tr>
-              <Th>Name</Th>
+              <Th className='rounded-tl-md rounded-bl-md'>Name</Th>
               <Th>Email</Th>
               <Th>Mobile</Th>
               <Th>Status</Th>
-              <Th className="text-right">Actions</Th>
+              <Th className="text-right rounded-tr-md rounded-br-md">Actions</Th>
             </Tr>
           </THead>
           <TBody>
@@ -228,9 +255,7 @@ const bookingToday=(p:FhirPatient)=>{
 
     <PatientsActionButtons
       onView={() => {
-        setDialogMode('edit')
-        setEditingPatient(p)
-        setDialogOpen(true)
+        handleViewPatient(p)
       }}
       onEdit={() => {
         setDialogMode('edit')
@@ -366,9 +391,7 @@ const bookingToday=(p:FhirPatient)=>{
         <div className="mt-3 flex justify-end">
           <PatientsActionButtons
             onView={() => {
-              setDialogMode('edit')
-              setEditingPatient(p)
-              setDialogOpen(true)
+              handleViewPatient(p)
             }}
             onEdit={() => {
               setDialogMode('edit')
@@ -447,7 +470,6 @@ const bookingToday=(p:FhirPatient)=>{
     )
   })}
 </div>
-
 
       {/* Dialog */}
       <PatientDialog

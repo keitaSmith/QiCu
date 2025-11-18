@@ -1,7 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { FunnelIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { useMemo, useState,useEffect } from 'react'
+import { FunnelIcon } from '@heroicons/react/24/outline'
+import { SearchField } from '@/components/ui/SearchField'
+import { FilterSelect, type FilterOption } from '@/components/ui/FilterSelect'
 
 import { BOOKINGS } from '@/data/bookings'
 import { PATIENTS } from '@/data/patients'
@@ -15,6 +17,12 @@ import { Collapsible } from '@/components/ui/Collapsible'
 import { BookingActionButtons } from '@/components/ui/RowActions'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 
+import { useRightPanel } from '@/components/layout/RightPanelContext'
+import { BookingDetailPanel } from '@/components/bookings/BookingDetailPanel'
+
+import { useRouter } from 'next/navigation'
+import { useIsDesktop } from '@/lib/useIsDesktop'
+
 function classNames(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(' ')
 }
@@ -22,6 +30,23 @@ function classNames(...classes: (string | false | null | undefined)[]) {
 export default function BookingsPage() {
   const [q, setQ] = useState('')
   const [status, setStatus] = useState<'all' | Booking['status']>('all')
+  const { setRightPanelContent } = useRightPanel()
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  const router = useRouter()
+  const isDesktop = useIsDesktop()
+
+  const statusOptions: FilterOption<'all' | Booking['status']>[] = [
+  { value: 'all',       label: 'All statuses (upcoming)' },
+  { value: 'confirmed', label: 'Confirmed' },
+  { value: 'pending',   label: 'Pending' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'fulfilled', label: 'Fulfilled' },
+  { value: 'no-show',   label: 'No show' },
+]
+
+  useEffect(() => {
+    setRightPanelContent(null)
+  }, [setRightPanelContent])
   const now = new Date()
 
   // stable map: patientId -> display name
@@ -52,6 +77,20 @@ export default function BookingsPage() {
     return upcomingBookings.filter(b => b.status === status)
   }, [upcomingBookings, status])
 
+  function handleViewBooking(b: Booking) {
+  if (isDesktop) {
+    // whatever you use to fill the right panel
+    setRightPanelContent(
+      <BookingDetailPanel
+        booking={b}
+        patientName={names.get(b.patientId) ?? b.patientId}
+      />,
+    )
+  } else {
+    router.push(`/dashboard/bookings/${b.id}`)
+  }
+}
+
   return (
     <div className="space-y-10">
       {/* Header matches Patients (nice mobile stacking) */}
@@ -60,33 +99,19 @@ export default function BookingsPage() {
 
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           {/* Search – full width on mobile */}
-          <div className="relative sm:w-auto">
-            <MagnifyingGlassIcon className="pointer-events-none absolute left-2 top-1/2 h-5 w-5 -translate-y-1/2 text-ink/40" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search all bookings…"
-              className="w-full sm:w-64 rounded-lg bg-surface pl-8 pr-3 py-2 text-sm text-ink outline-none placeholder:text-ink/50"
-            />
-          </div>
+          
+            <SearchField
+                value={q}
+                onChange={setQ}
+                placeholder="Search all bookings…"
+              />
 
-          {/* Status filter – same visual rhythm as Patients controls */}
-          <div className="relative sm:w-auto">
-            <FunnelIcon className="pointer-events-none absolute left-2 top-1/2 h-5 w-5 -translate-y-1/2 text-ink/40" />
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as any)}
-              title="Filter upcoming by status"
-              className="w-full sm:w-auto rounded-lg border border-brand-300/50 bg-surface pl-8 pr-8 py-2 text-sm text-ink outline-none"
-            >
-              <option value="all">All statuses (upcoming)</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="pending">Pending</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="fulfilled">Fulfilled</option>
-              <option value="no-show">No show</option>
-            </select>
-          </div>
+              <FilterSelect
+                value={status}
+                onChange={setStatus}
+                options={statusOptions}
+              />
+          
 
           {/* Primary CTA – matches Patients */}
           <button className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 focus:outline-none">
@@ -102,16 +127,16 @@ export default function BookingsPage() {
           <TableFrame>
             <TableEl>
               <THead>
-                <tr>
-                  <Th>Code</Th>
+                <Tr>
+                  <Th className="rounded-tl-md rounded-bl-md">Code</Th>
                   <Th>Patient</Th>
                   <Th>Service</Th>
                   <Th>Resource</Th>
                   <Th>Start</Th>
                   <Th>End</Th>
                   <Th>Status</Th>
-                  <Th className="text-right">Actions</Th>
-                </tr>
+                  <Th className="text-right rounded-tr-md rounded-br-md">Actions</Th>
+                </Tr>
               </THead>
               <TBody>
                 {todayBookings.map((b) => (
@@ -128,7 +153,7 @@ export default function BookingsPage() {
                     </Td>
                     <Td className="text-right">
                       <BookingActionButtons
-                        onView={() => console.log('view booking', b.id)}
+                        onView={() => handleViewBooking(b)}
                         onReschedule={() => console.log('reschedule', b.id)}
                         onCancel={() => console.log('cancel', b.id)}
                         onNoShow={() => console.log('set no-show', b.id)}
@@ -174,7 +199,7 @@ export default function BookingsPage() {
               {b.notes && <p className="mt-2 text-sm text-ink/60">{b.notes}</p>}
               <div className="mt-3 flex justify-end">
                 <BookingActionButtons
-                  onView={() => console.log('view booking', b.id)}
+                  onView={() => handleViewBooking(b)}
                   onReschedule={() => console.log('reschedule', b.id)}
                   onCancel={() => console.log('cancel', b.id)}
                   onNoShow={() => console.log('set no-show', b.id)}
@@ -193,16 +218,16 @@ export default function BookingsPage() {
           <TableFrame>
             <TableEl>
               <THead>
-                <tr>
-                  <Th>Code</Th>
+                <Tr>
+                  <Th className="rounded-tl-md rounded-bl-md">Code</Th>
                   <Th>Patient</Th>
                   <Th>Service</Th>
                   <Th>Resource</Th>
                   <Th>Start</Th>
                   <Th>End</Th>
                   <Th>Status</Th>
-                  <Th className="text-right">Actions</Th>
-                </tr>
+                  <Th className="text-right rounded-tr-md rounded-br-md">Actions</Th>
+                </Tr>
               </THead>
 
               <TBody>
@@ -219,7 +244,7 @@ export default function BookingsPage() {
                     </Td>
                     <Td className="text-right">
                       <BookingActionButtons
-                        onView={() => console.log('view booking', b.id)}
+                        onView={() => handleViewBooking(b)}
                         onReschedule={() => console.log('reschedule', b.id)}
                         onCancel={() => console.log('cancel', b.id)}
                         onNoShow={() => console.log('set no-show', b.id)}
@@ -264,7 +289,7 @@ export default function BookingsPage() {
               {b.notes && <p className="mt-2 text-sm text-ink/60">{b.notes}</p>}
               <div className="mt-3 flex justify-end">
                 <BookingActionButtons
-                  onView={() => console.log('view booking', b.id)}
+                  onView={() => handleViewBooking(b)}
                   onReschedule={() => console.log('reschedule', b.id)}
                   onNoShow={() => console.log('set no-show', b.id)}
                   onCancel={() => console.log('cancel', b.id)}
