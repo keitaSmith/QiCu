@@ -3,29 +3,29 @@
 import { useEffect, useState, FormEvent } from 'react'
 import { Dialog, DialogBackdrop, DialogPanel } from '@headlessui/react'
 
-import type { Session } from '@/models/session'
+import type { Booking } from '@/models/booking'
 import { useSnackbar } from '@/components/ui/Snackbar'
 import { DateTimeField } from '@/components/ui/DateTimeField'
 import SelectField, { type SelectOption } from '@/components/ui/SelectField'
 
 type PatientOption = { id: string; name: string }
 
-type SessionDialogProps = {
+type BookingDialogProps = {
   open: boolean
   onClose: () => void
 
   mode?: 'create' | 'edit'
-  session?: Session
+  booking?: Booking
 
-  /** For create mode: fixed patient (when opened from Patients or Sessions list) */
+  /** For create mode: fixed patient (when opened from Patients or Bookings list) */
   patientId?: string | null
   patientName?: string
 
-  /** For create mode from Sessions page: choose patient */
+  /** For create mode from Bookings page: choose patient */
   patients?: PatientOption[]
 
-  onCreated?: (session: Session) => void
-  onUpdated?: (session: Session) => void
+  onCreated?: (booking: Booking) => void
+  onUpdated?: (booking: Booking) => void
 }
 
 function toLocalDatetimeInputValue(d: Date): string {
@@ -38,23 +38,26 @@ function toLocalDatetimeInputValue(d: Date): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`
 }
 
-export function SessionDialog({
+export function BookingDialog({
   open,
   onClose,
   mode = 'create',
-  session,
+  booking,
   patientId,
   patientName,
   patients,
   onCreated,
   onUpdated,
-}: SessionDialogProps) {
+}: BookingDialogProps) {
   const { showSnackbar } = useSnackbar()
-  const isEdit = mode === 'edit' && !!session
+  const isEdit = mode === 'edit' && !!booking
 
   const [startLocal, setStartLocal] = useState('')
-  const [chiefComplaint, setChiefComplaint] = useState('')
-  const [techniques, setTechniques] = useState('')
+  const [endLocal, setEndLocal] = useState('')
+  const [service, setService] = useState('')
+  const [resource, setResource] = useState('')
+  const [notes, setNotes] = useState('')
+
   const [selectedPatientId, setSelectedPatientId] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -71,37 +74,57 @@ export function SessionDialog({
     setError(null)
     setSubmitting(false)
 
-    if (isEdit && session) {
-      const d = new Date(session.startDateTime)
-      setStartLocal(toLocalDatetimeInputValue(d))
-      setChiefComplaint(session.chiefComplaint)
-      setTechniques((session.techniques ?? []).join(', '))
-      // patientId is fixed when editing
+    if (isEdit && booking) {
+      const startD = new Date(booking.start)
+      const endD = new Date(booking.end)
+
+      setStartLocal(toLocalDatetimeInputValue(startD))
+      setEndLocal(toLocalDatetimeInputValue(endD))
+      setService(booking.service)
+      setResource(booking.resource ?? '')
+      setNotes(booking.notes ?? '')
+      // patient is fixed in edit
     } else {
-      setStartLocal(toLocalDatetimeInputValue(new Date()))
-      setChiefComplaint('')
-      setTechniques('')
+      const now = new Date()
+      const inOneHour = new Date(now.getTime() + 60 * 60 * 1000)
+
+      setStartLocal(toLocalDatetimeInputValue(now))
+      setEndLocal(toLocalDatetimeInputValue(inOneHour))
+      setService('')
+      setResource('')
+      setNotes('')
+
       if (!patientId) {
         setSelectedPatientId('')
       }
     }
-  }, [open, isEdit, session, patientId])
+  }, [open, isEdit, booking, patientId])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
 
     const effectivePatientId =
-      isEdit && session
-        ? session.patientId
+      isEdit && booking
+        ? booking.patientId
         : patientId ?? selectedPatientId
 
     if (!effectivePatientId) {
-      setError('Please choose a patient for this session.')
+      setError('Please choose a patient for this booking.')
       return
     }
 
     if (!startLocal) {
-      setError('Please set a session start time.')
+      setError('Please set a booking start time.')
+      return
+    }
+
+    if (!endLocal) {
+      setError('Please set a booking end time.')
+      return
+    }
+
+    if (!service.trim()) {
+      setError('Please enter a service name.')
       return
     }
 
@@ -110,29 +133,24 @@ export function SessionDialog({
       setError(null)
 
       const isoStart = new Date(startLocal).toISOString()
+      const isoEnd = new Date(endLocal).toISOString()
 
       const payload: any = {
-        startDateTime: isoStart,
-        chiefComplaint: chiefComplaint.trim(),
-      }
-
-      if (techniques.trim()) {
-        payload.techniques = techniques
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
-      } else {
-        payload.techniques = []
+        start: isoStart,
+        end: isoEnd,
+        service: service.trim(),
+        resource: resource.trim() || undefined,
+        notes: notes.trim() || undefined,
       }
 
       let endpoint: string
       let method: 'POST' | 'PATCH' = 'POST'
 
-      if (isEdit && session) {
-        endpoint = `/api/sessions/${encodeURIComponent(session.id)}`
+      if (isEdit && booking) {
+        endpoint = `/api/bookings/${encodeURIComponent(booking.id)}`
         method = 'PATCH'
       } else {
-        endpoint = `/api/patients/${encodeURIComponent(effectivePatientId)}/sessions`
+        endpoint = `/api/patients/${encodeURIComponent(effectivePatientId)}/bookings`
         method = 'POST'
       }
 
@@ -143,25 +161,39 @@ export function SessionDialog({
       })
 
       if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        const msg =
-          data?.error ||
-          (res.status >= 500
-            ? 'Server error while saving session'
-            : 'Failed to save session')
-        throw new Error(msg)
-      }
+  const data = await res.json().catch(() => null)
+  const msg =
+    data?.error ||
+    (res.status >= 500
+      ? 'Server error while saving booking'
+      : 'Failed to save booking')
 
-      const saved: Session = await res.json()
+  console.error('Failed to save booking', res.status, data)
+
+  const friendly = msg || 'Failed to save booking'
+
+  setError(friendly)
+  showSnackbar({
+    variant: 'error',
+    message: friendly,
+  })
+
+  setSubmitting(false)
+  return
+}
+
+
+      const saved: Booking = await res.json()
 
       if (isEdit) {
         onUpdated?.(saved)
         showSnackbar({
           variant: 'success',
-          message: 'Session was successfully updated',
+          message: 'Booking was successfully updated',
         })
       } else {
         onCreated?.(saved)
+
         const resolvedName =
           patientName ??
           patients?.find(p => p.id === saved.patientId)?.name ??
@@ -169,17 +201,17 @@ export function SessionDialog({
 
         showSnackbar({
           variant: 'success',
-          message: `${resolvedName}'s session was successfully created`,
+          message: `New booking created for ${resolvedName}`,
         })
       }
 
       onClose()
     } catch (err: any) {
-      console.error('Failed to save session', err)
-      setError(err?.message ?? 'Failed to save session')
+      console.error('Failed to save booking', err)
+      setError(err?.message ?? 'Failed to save booking')
       showSnackbar({
         variant: 'error',
-        message: 'Could not save session. Please try again.',
+        message: 'Could not save booking. Please try again.',
       })
     } finally {
       setSubmitting(false)
@@ -187,11 +219,11 @@ export function SessionDialog({
   }
 
   const title =
-    isEdit && session
-      ? 'Edit session'
+    isEdit && booking
+      ? 'Edit booking'
       : patientName
-      ? `New session for ${patientName}`
-      : 'New session'
+      ? `New booking for ${patientName}`
+      : 'New booking'
 
   return (
     <Dialog open={open} onClose={onClose} className="relative z-40">
@@ -204,8 +236,8 @@ export function SessionDialog({
               <h2 className="text-lg font-semibold text-ink">{title}</h2>
               <p className="mt-1 text-sm text-ink/70">
                 {isEdit
-                  ? 'Update the details of this treatment session.'
-                  : 'Record the basic details of this treatment now. You can always add more notes later.'}
+                  ? 'Update the details of this booking.'
+                  : 'Schedule a new booking for your patient.'}
               </p>
             </div>
 
@@ -223,57 +255,75 @@ export function SessionDialog({
                 </div>
               )}
 
-              {(patientId && patientName) || (isEdit && session) ? (
+              {(patientId && patientName) || (isEdit && booking) ? (
                 <div>
                   <label className="mb-1 block text-xs text-ink/60">
                     Patient
                   </label>
                   <p className="border-0 border-b border-brand-300/40 bg-transparent py-2 text-sm text-ink">
                     {patientName ??
-                      patients?.find(p => p.id === session?.patientId)?.name ??
+                      patients?.find(p => p.id === booking?.patientId)?.name ??
                       'Patient'}
                   </p>
                 </div>
               ) : null}
 
               <DateTimeField
-                label="Session start"
-                name="startDateTime"
+                label="Start time"
+                name="start"
                 value={startLocal}
                 onChange={setStartLocal}
                 required
-                helperText="Local date and time of the treatment session."
+                helperText="Local date and time when the appointment starts."
+              />
+
+              <DateTimeField
+                label="End time"
+                name="end"
+                value={endLocal}
+                onChange={setEndLocal}
+                required
+                helperText="Local date and time when the appointment ends."
               />
 
               <div>
                 <label className="mb-1 block text-xs text-ink/60">
-                  Chief complaint
+                  Service
                 </label>
-                <textarea
+                <input
+                  type="text"
                   required
-                  rows={3}
-                  value={chiefComplaint}
-                  onChange={e => setChiefComplaint(e.target.value)}
-                  placeholder="e.g Patient has Chronic Reccuring Migrains which last for up to 3 days…"
+                  value={service}
+                  onChange={e => setService(e.target.value)}
+                  placeholder="e.g. Acupuncture 60m"
                   className="w-full border-0 border-b border-brand-300/40 bg-transparent py-2 text-sm text-ink placeholder:text-ink/40 focus:border-brand-300 focus:outline-none focus:ring-0"
                 />
               </div>
 
               <div>
                 <label className="mb-1 block text-xs text-ink/60">
-                  Techniques used (optional)
+                  Resource (optional)
                 </label>
                 <input
                   type="text"
-                  value={techniques}
-                  onChange={e => setTechniques(e.target.value)}
-                  placeholder="e.g. cupping, acupuncture"
+                  value={resource}
+                  onChange={e => setResource(e.target.value)}
+                  placeholder="e.g. Room 1, Therapist Ana"
                   className="w-full border-0 border-b border-brand-300/40 bg-transparent py-2 text-sm text-ink placeholder:text-ink/40 focus:border-brand-300 focus:outline-none focus:ring-0"
                 />
-                <p className="mt-1 text-xs text-ink/60">
-                  Enter a comma-separated list. This maps to the{' '}
-                  <code>techniques</code> field on the session.
-                </p>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-ink/60">
+                  Notes (optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  placeholder="Internal notes about this booking…"
+                  className="w-full border-0 border-b border-brand-300/40 bg-transparent py-2 text-sm text-ink placeholder:text-ink/40 focus:border-brand-300 focus:outline-none focus:ring-0"
+                />
               </div>
 
               {error && <p className="text-sm text-red-600">{error}</p>}
@@ -292,7 +342,7 @@ export function SessionDialog({
                   disabled={submitting}
                   className="rounded-md bg-brand-700 px-3 py-2 text-sm text-white hover:bg-brand-600 disabled:opacity-70"
                 >
-                  {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Create session'}
+                  {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Create booking'}
                 </button>
               </div>
             </form>

@@ -221,10 +221,11 @@ export function DateTimeField({
   /* ---------- render ---------- */
 
   return (
-    <div className="space-y-1">
+    <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-ink">
+        <label className="mb-1 block text-xs text-ink/60">
           {label}
+          {required ? <span className="ml-0.5 text-rose-500">*</span> : null}
         </label>
       )}
 
@@ -232,228 +233,239 @@ export function DateTimeField({
         <input type="hidden" name={name} value={value} required={required} />
       )}
 
-      <div className="flex gap-2">
-        {/* DATE FIELD */}
-        <div className="relative flex-1">
-          <button
-            type="button"
-            onClick={() => {
-              setIsDateOpen(o => !o)
-              setIsTimeOpen(false)
-            }}
-            className={cn(
-              'flex w-full items-center justify-between rounded-lg border border-slate-300 bg-surface px-3 py-2 text-left text-sm text-ink',
-              'outline-none focus:ring-1 focus:ring-brand-600 focus:border-brand-600',
-            )}
-          >
-            <span
-              className={cn(
-                'flex items-center gap-2 truncate',
-                !selectedDate && 'text-ink/50',
-              )}
-            >
-              <span className="truncate">{displayDate}</span>
-            </span>
-            <CalendarDaysIcon className="h-4 w-4 text-ink/50" />
-          </button>
-
-          {isDateOpen && (
-            <div
-              className={cn(
-                'absolute z-20 mt-1 rounded-xl border border-brand-300 bg-surface shadow-lg',
-                'p-3 w-[80vw] max-w-[320px] sm:w-[360px] md:w-[400px]',
-                'max-h-[430px] overflow-hidden',
-              )}
-            >
-              {/* Header with month nav */}
-              <div className="mb-3 flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={goToPrevMonth}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-300/15 text-brand-700 hover:bg-brand-300/25"
-                >
-                  <ChevronLeftIcon className="h-4 w-4" />
-                </button>
-                <div className="text-sm font-semibold text-ink">
-                  {monthLabel}
-                </div>
-                <button
-                  type="button"
-                  onClick={goToNextMonth}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-300/15 text-brand-700 hover:bg-brand-300/25"
-                >
-                  <ChevronRightIcon className="h-4 w-4" />
-                </button>
-              </div>
-
-              {/* Weekday row */}
-              <div className="mb-2 grid grid-cols-7 text-center text-[0.72rem] font-medium uppercase tracking-wide text-brand-700">
-                {weekdayLabels.map(day => (
-                  <div key={day} className="py-1">
-                    {day}
-                  </div>
-                ))}
-              </div>
-
-              {/* Days grid – no lines, clean brand highlights */}
-<div className="grid grid-cols-7 rounded-lg">
-  {days.map((day, idx) => {
-    if (!day) {
-      return (
+      {/* DATE + TIME AS TWO SEPARATE UNDERLINED ROWS */}
+      <div className="flex flex-row gap-10">
+        {/* DATE row */}
         <div
-          key={`empty-${idx}`}
-          className="h-9 md:h-10"
-        />
-      )
-    }
-
-    const key = formatDate(day)
-    const isToday = key === todayKey
-    const isSelected = key === selectedKey
-
-    return (
-      <button
-        key={key}
-        type="button"
-        onClick={() => handleSelectDay(day)}
-        className={cn(
-          'flex h-9 md:h-10 items-center justify-center rounded-md text-sm transition',
-          'text-ink/80 hover:bg-brand-300/20',
-          // base background
-          !isToday && !isSelected && 'bg-surface',
-          // today (only if not selected)
-          isToday && !isSelected && 'bg-brand-300/25 text-ink font-medium',
-          // selected date
-          isSelected && 'bg-brand-700 text-surface font-semibold hover:text-ink',
-        )}
-      >
-        {day.getDate()}
-      </button>
-    )
-  })}
-</div>
-            </div>
+          className={cn(
+            'border-0 border-b border-brand-300/40 bg-transparent py-2 text-sm',
+            'focus-within:border-brand-300',
+            'w-2/3',
           )}
-        </div>
-
-        {/* TIME FIELD */}
-        <div className="relative w-36 sm:w-40">
-          <button
-            type="button"
-            onClick={() => {
-              setIsTimeOpen(o => !o)
-              setIsDateOpen(false)
-            }}
-            className={cn(
-              'flex w-full items-center justify-between rounded-lg border border-slate-300 bg-surface px-3 py-2 text-left text-sm text-ink',
-              'outline-none focus:ring-1 focus:ring-brand-600 focus:border-brand-600',
-            )}
-          >
-            <span
+        >
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setIsDateOpen(o => !o)
+                setIsTimeOpen(false)
+              }}
               className={cn(
-                'tabular-nums',
-                !timePart && 'text-ink/50',
+                'flex w-full items-center justify-between bg-transparent text-left text-sm text-ink',
+                'outline-none focus:outline-none',
               )}
             >
-              {displayTime}
-            </span>
-            <ClockIcon className="h-4 w-4 text-ink/50" />
-          </button>
+              <span
+                className={cn(
+                  'flex items-center gap-2 truncate',
+                  !selectedDate && 'text-ink/50',
+                )}
+              >
+                <span className="truncate">{displayDate}</span>
+              </span>
+              <CalendarDaysIcon className="h-4 w-4 text-ink/50" />
+            </button>
 
-          {isTimeOpen && (
-            <div className="absolute right-0 z-20 mt-1 w-60 rounded-xl border border-brand-300 bg-surface p-3 shadow-lg">
-              
-
-              {/* Hour / minute lists */}
-              <div className="mb-3 flex gap-3">
-                {/* Hour list */}
-                <div className="flex-1 rounded-lg p-2">
-                  <div className="mb-1 text-[0.7rem] font-medium uppercase tracking-wide text-ink/60">
-                    Hour
-                  </div>
-                  <div className="max-h-40 overflow-y-auto pr-1 text-sm">
-                    {hours.map(h => {
-                      const isActive = h === currentHour
-                      return (
-                        <button
-                          key={h}
-                          type="button"
-                          onClick={() => setHourDirect(h)}
-                          className={cn(
-                            'flex w-full items-center justify-between rounded-md px-2 py-1 tabular-nums',
-                            'text-ink/80 hover:bg-brand-300/25',
-                            isActive &&
-                              'bg-brand-700 text-surface font-semibold',
-                          )}
-                        >
-                          <span>{String(h).padStart(2, '0')}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Minute list */}
-                <div className="flex-1 rounded-lg p-2">
-                  <div className="mb-1 text-[0.7rem] font-medium uppercase tracking-wide text-ink/60">
-                    Minute
-                  </div>
-                  <div className="max-h-40 overflow-y-auto pr-1 text-sm">
-                    {minutes.map(m => {
-                      const isActive = m === currentMinute
-                      return (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setMinuteDirect(m)}
-                          className={cn(
-                            'flex w-full items-center justify-between rounded-md px-2 py-1 tabular-nums',
-                            'text-ink/80 hover:bg-brand-300/15',
-                            isActive &&
-                              'bg-brand-700 text-surface font-semibold',
-                          )}
-                        >
-                          <span>{String(m).padStart(2, '0')}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <button
-                  type="button"
-                  onClick={applyNow}
-                  className="rounded-md px-2 py-1 text-[0.7rem] font-medium uppercase tracking-wide text-brand-700 hover:bg-brand-300/15"
-                >
-                  Now
-                </button>
-                <div className="flex gap-2">
+            {isDateOpen && (
+              <div
+                className={cn(
+                  'absolute z-20 mt-1 rounded-xl border border-brand-300 bg-surface shadow-lg',
+                  'p-3 w-[80vw] max-w-[320px] sm:w-[360px] md:w-[400px]',
+                  'max-h-[430px] overflow-hidden',
+                )}
+              >
+                {/* Header with month nav */}
+                <div className="mb-3 flex items-center justify-between">
                   <button
                     type="button"
-                    onClick={clearTime}
-                    className="rounded-md px-2 py-1 text-[0.7rem] font-medium uppercase tracking-wide text-ink/60 hover:bg-canvas"
+                    onClick={goToPrevMonth}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-300/15 text-brand-700 hover:bg-brand-300/25"
                   >
-                    Clear
+                    <ChevronLeftIcon className="h-4 w-4" />
                   </button>
+                  <div className="text-sm font-semibold text-ink">
+                    {monthLabel}
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setIsTimeOpen(false)}
-                    className="rounded-md bg-brand-700 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-wide text-surface hover:bg-brand-600"
+                    onClick={goToNextMonth}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-300/15 text-brand-700 hover:bg-brand-300/25"
                   >
-                    Done
+                    <ChevronRightIcon className="h-4 w-4" />
                   </button>
                 </div>
+
+                {/* Weekday row */}
+                <div className="mb-2 grid grid-cols-7 text-center text-[0.72rem] font-medium uppercase tracking-wide text-brand-700">
+                  {weekdayLabels.map(day => (
+                    <div key={day} className="py-1">
+                      {day}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Days grid */}
+                <div className="grid grid-cols-7 rounded-lg">
+                  {days.map((day, idx) => {
+                    if (!day) {
+                      return (
+                        <div
+                          key={`empty-${idx}`}
+                          className="h-9 md:h-10"
+                        />
+                      )
+                    }
+
+                    const key = formatDate(day)
+                    const isToday = key === todayKey
+                    const isSelected = key === selectedKey
+
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => handleSelectDay(day)}
+                        className={cn(
+                          'flex h-9 md:h-10 items-center justify-center rounded-md text-sm transition',
+                          'text-ink/80 hover:bg-brand-300/20',
+                          !isToday && !isSelected && 'bg-surface',
+                          isToday && !isSelected && 'bg-brand-300/25 text-ink font-medium',
+                          isSelected && 'bg-brand-700 text-surface font-semibold hover:text-ink',
+                        )}
+                      >
+                        {day.getDate()}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
+            )}
+          </div>
+        </div>
+{/*Time Field*/}
+        <div
+          className={cn(
+            'border-0 border-b border-brand-300/40 bg-transparent py-2 text-sm',
+            'focus-within:border-brand-300',
+            'w-1/3'
           )}
+        >
+          <div className="relative w-full sm:w-40">
+            <button
+              type="button"
+              onClick={() => {
+                setIsTimeOpen(o => !o)
+                setIsDateOpen(false)
+              }}
+              className={cn(
+                'flex w-full items-center justify-between bg-transparent text-left text-sm text-ink',
+                'outline-none focus:outline-none',
+              )}
+            >
+              <span
+                className={cn(
+                  'tabular-nums',
+                  !timePart && 'text-ink/50',
+                )}
+              >
+                {displayTime}
+              </span>
+              <ClockIcon className="h-4 w-4 text-ink/50" />
+            </button>
+
+            {isTimeOpen && (
+              <div className="absolute right-0 z-20 mt-1 w-60 rounded-xl border border-brand-300 bg-surface p-3 shadow-lg">
+                {/* Hour / minute lists */}
+                <div className="mb-3 flex gap-3">
+                  {/* Hour list */}
+                  <div className="flex-1 rounded-lg p-2">
+                    <div className="mb-1 text-[0.7rem] font-medium uppercase tracking-wide text-ink/60">
+                      Hour
+                    </div>
+                    <div className="max-h-40 overflow-y-auto pr-1 text-sm">
+                      {hours.map(h => {
+                        const isActive = h === currentHour
+                        return (
+                          <button
+                            key={h}
+                            type="button"
+                            onClick={() => setHourDirect(h)}
+                            className={cn(
+                              'flex w-full items-center justify-between rounded-md px-2 py-1 tabular-nums',
+                              'text-ink/80 hover:bg-brand-300/15',
+                              isActive &&
+                                'bg-brand-700 text-surface font-semibold',
+                            )}
+                          >
+                            <span>{String(h).padStart(2, '0')}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Minute list */}
+                  <div className="flex-1 rounded-lg p-2">
+                    <div className="mb-1 text-[0.7rem] font-medium uppercase tracking-wide text-ink/60">
+                      Minute
+                    </div>
+                    <div className="max-h-40 overflow-y-auto pr-1 text-sm">
+                      {minutes.map(m => {
+                        const isActive = m === currentMinute
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setMinuteDirect(m)}
+                            className={cn(
+                              'flex w-full items-center justify-between rounded-md px-2 py-1 tabular-nums',
+                              'text-ink/80 hover:bg-brand-300/15',
+                              isActive &&
+                                'bg-brand-700 text-surface font-semibold',
+                            )}
+                          >
+                            <span>{String(m).padStart(2, '0')}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={applyNow}
+                    className="rounded-md px-2 py-1 text-[0.7rem] font-medium uppercase tracking-wide text-brand-700 hover:bg-brand-300/15"
+                  >
+                    Now
+                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={clearTime}
+                      className="rounded-md px-2 py-1 text-[0.7rem] font-medium uppercase tracking-wide text-ink/60 hover:bg-canvas"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsTimeOpen(false)}
+                      className="rounded-md bg-brand-700 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-wide text-surface hover:bg-brand-600"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {helperText && (
-        <p className="text-xs text-ink/60">{helperText}</p>
+        <p className="mt-1 text-xs text-ink/60">{helperText}</p>
       )}
     </div>
   )

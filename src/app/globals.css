@@ -1,5 +1,5 @@
 @import "tailwindcss";
-
+@import 'flag-icons/css/flag-icons.min.css';
 
 :root {
   --background: #ffffff;
@@ -42,4 +42,23 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+.PhoneInputInput {
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+}
+/* Kill the ugly default border + focus ring on the phone input */
+.qi-phone-input,
+.qi-phone-input:focus,
+.qi-phone-input:focus-visible {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent;
+}
 
+/* (optional) make sure it doesn't add extra padding either */
+.qi-phone-input {
+  padding: 0;
+}

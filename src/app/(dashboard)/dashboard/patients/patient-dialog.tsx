@@ -6,8 +6,13 @@ import type { FhirPatient } from '@/models/patient'
 import * as Patient from '@/models/patient'
 import type { NewPatientForm } from '@/lib/fhir/patient-builders'
 import { DateField } from '@/components/ui/DateField'
+import SelectField, { type SelectOption } from '@/components/ui/SelectField'
+import PhoneField from '@/components/ui/PhoneField'
+import RadioField from '@/components/ui/RadioField'
 
 type Mode = 'create' | 'edit'
+type Gender = 'male' | 'female' | 'other' | 'prefer_not_to_say'
+type InviteMode = 'profileOnly' | 'profileAndInvite'
 
 const underlineInputClass = (hasError?: boolean) =>
   [
@@ -23,6 +28,18 @@ const underlineSelectClass = (hasError?: boolean) =>
     'text-ink focus:ring-0 focus:outline-none transition-colors appearance-none',
     hasError ? 'border-rose-500 focus:border-rose-500' : 'border-brand-300/40 focus:border-brand-300',
   ].join(' ')
+
+const genderOptions: SelectOption<Gender>[] = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'other', label: 'Other' },
+  { value: 'prefer_not_to_say', label: 'Prefer not to say' },
+]
+
+const inviteOptions: SelectOption<InviteMode>[] = [
+  { value: 'profileOnly', label: 'Create profile only' },
+  { value: 'profileAndInvite', label: 'Create + send invite' },
+]
 
 export function PatientDialog({
   open,
@@ -43,11 +60,9 @@ export function PatientDialog({
   const [lastName, setLastName] = useState('')
   const [dob, setDob] = useState('') // YYYY-MM-DD
   const [email, setEmail] = useState('')
-  const [mobile, setMobile] = useState('')
-  const [inviteMode, setInviteMode] = useState<'profileOnly' | 'profileAndInvite'>('profileOnly')
-  const [gender, setGender] = useState<'male' | 'female' | 'other' | 'prefer_not_to_say'>(
-    'prefer_not_to_say',
-  )
+  const [mobile, setMobile] = useState<string | null>(null)
+  const [inviteMode, setInviteMode] = useState<InviteMode>('profileOnly')
+  const [gender, setGender] = useState<Gender>('prefer_not_to_say')
 
 
   const [error, setError] = useState<string | null>(null)
@@ -129,14 +144,14 @@ export function PatientDialog({
   }
 
   // Mobile – optional simple check (you can tune this later)
-  if (mobile.trim() && mobile.trim().length < 6) {
-    nextFieldErrors.mobile = 'Please enter a valid mobile number.'
-  }
+  // if (mobile.trim() && mobile.trim().length < 6) {
+  //   nextFieldErrors.mobile = 'Please enter a valid mobile number.'
+  // }
 
   if (Object.keys(nextFieldErrors).length > 0) {
     setFieldErrors(nextFieldErrors)
     setError('Please correct the highlighted fields.')
-    return // ⛔ don't call Patient.create/update
+    return // don't call Patient.create/update
   }
 
   // if we reach here, client-side validation passed → go to backend
@@ -297,29 +312,14 @@ export function PatientDialog({
   error={fieldErrors.dob}
 />
 
-              {/* Gender */}
-              <div className='relative'>
-                <label className="mb-1 block text-xs text-ink/60">Gender</label>
-                <select
-                  value={gender}
-                  onChange={e => setGender(e.target.value as any)}
-                  className={underlineSelectClass(!!fieldErrors.gender)}
-                >
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
-                  <option value="prefer_not_to_say">Prefer not to say</option>
-                </select>
-                 <svg
-      className="pointer-events-none absolute right-2 top-2/3 h-4 w-4 -translate-y-1/2 text-ink/40 "
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-    </svg>
-              </div>
+{/* Gender */}
+<SelectField<Gender>
+  label="Gender"
+  value={gender}
+  onChange={setGender}
+  options={genderOptions}
+  error={fieldErrors.gender}
+/>
 
               {/* Contact */}
               <div className="grid grid-cols-2 gap-4">
@@ -335,12 +335,14 @@ export function PatientDialog({
     )}
   </div>
   <div>
-    <label className="mb-1 block text-xs text-ink/60">Mobile (+41…)</label>
-    <input
-      value={mobile}
-      onChange={e => setMobile(e.target.value)}
-      className={underlineInputClass(!!fieldErrors.mobile)}
-    />
+    <PhoneField
+  label="Phone"
+  value={mobile}
+  onChange={setMobile}
+  defaultCountry="CH" // or detect from clinic / practitioner later
+  required={false}
+  error={fieldErrors.phone}
+/>
     {fieldErrors.mobile && (
       <p className="mt-1 text-xs text-rose-600">{fieldErrors.mobile}</p>
     )}
@@ -348,25 +350,18 @@ export function PatientDialog({
 </div>
 
 
-              {/* Invite mode only on create */}
-              {!isEdit && (
-                <div>
-                  <label className="mb-1 block text-xs text-ink/60">Invite</label>
-                  <select
-                    value={inviteMode}
-                    onChange={e => setInviteMode(e.target.value as any)}
-                    className={underlineSelectClass(!!fieldErrors.inviteMode)}
-                  >
-                    <option value="profileOnly">Create profile only</option>
-                    <option value="profileAndInvite">Create + send invite</option>
-                  </select>
-                </div>
-              )}
-
-              {error && (
-  <p className="text-sm font-medium text-rose-600 bg-rose-50 border border-rose-200 rounded-md p-2">
-    {error}
-  </p>
+{/* Invite mode only on create */}
+{!isEdit && (
+  <RadioField<'profileOnly' | 'profileAndInvite'>
+    label="Invitation"
+    value={inviteMode}
+    onChange={setInviteMode}
+    options={[
+      { value: 'profileOnly', label: 'Create profile only' },
+      { value: 'profileAndInvite', label: 'Create + send invite' },
+    ]}
+    inline
+  />
 )}
 
               <div className="mt-3 flex justify-end gap-2">

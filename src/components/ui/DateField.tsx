@@ -139,15 +139,20 @@ const hasAnyDigits = !!(segments.day || segments.month || segments.year)
 const isComplete = segments.day.length === 2 && segments.month.length === 2 && segments.year.length === 4
 const isInvalid = isComplete && hasAnyDigits && !currentIso
 
-  
+const lastEmittedRef = useRef<string | null>(null)  
 useEffect(() => {
   const iso = segmentsToIso(segments)
   // only notify parent if it actually changed
-  if (iso !== value) {
-    onChange(iso)
-  }
-}, [segments, value, onChange])
-  const containerRef = useRef<HTMLDivElement | null>(null)
+  if (!iso) return
+
+  // same value as last time -> don't spam parent / avoid loops
+  if (iso === lastEmittedRef.current) return
+
+  lastEmittedRef.current = iso
+  onChange(iso)
+}, [segments, onChange])
+
+const containerRef = useRef<HTMLDivElement | null>(null)
 
   const selectedDate = useMemo(() => parseDate(value || ''), [value])
   const today = useMemo(() => new Date(), [])
