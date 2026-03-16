@@ -1,5 +1,4 @@
 'use client'
-import { BOOKINGS } from '@/data/bookings'
 import type { Booking } from '@/models/booking'
 import { useEffect, useMemo, useState } from 'react'
 //import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
@@ -21,6 +20,7 @@ export default function SessionsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogPatient, setDialogPatient] = useState<{ id: string; name: string } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [bookings, setBookings] = useState<Booking[]>([])
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
   const [editingSession, setEditingSession] = useState<Session | null>(null)
   const { showSnackbar } = useSnackbar()
@@ -32,20 +32,28 @@ export default function SessionsPage() {
   useEffect(() => {
     setRightPanelContent(null)
   }, [setRightPanelContent])
+  // Load bookings once so we can show the linked booking info for sessions
+  useEffect(() => {
+    fetch('/api/bookings', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : []))
+      .then((items: Booking[]) => setBookings(items))
+      .catch(() => setBookings([]))
+  }, [])
+
   const bookingMap = useMemo(
-  () =>
-    new Map(
-      BOOKINGS.map(b => [
-        b.id,
-        {
-          id: b.id,
-          code: b.code,
-          start: b.start,
-        },
-      ]),
-    ),
-  [],
-)
+    () =>
+      new Map(
+        bookings.map(b => [
+          b.id,
+          {
+            id: b.id,
+            code: b.code,
+            start: b.start,
+          },
+        ]),
+      ),
+    [bookings],
+  )
   // Patient options for the "New session" dialog when opened from this page
   const patientOptions = useMemo(
     () =>
@@ -343,7 +351,7 @@ export default function SessionsPage() {
         patientId={dialogPatient?.id}
         patientName={dialogPatient?.name}
         patients={patientOptions}
-        bookings={BOOKINGS}
+        bookings={bookings}
         onCreated={session => {
           setSessions(prev => [session, ...prev])
         }}

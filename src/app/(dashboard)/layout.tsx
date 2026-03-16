@@ -2,7 +2,7 @@
 'use client'
 
 import { SnackbarProvider } from '@/components/ui/Snackbar'
-import { useState, ReactNode } from 'react'
+import { useMemo, useState, ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -35,6 +35,12 @@ import { ChevronDownIcon, MagnifyingGlassIcon } from '@heroicons/react/20/solid'
 
 // ✨ Framer Motion
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
+
+import { TasksMenu } from '@/components/tasks/TasksMenu'
+import { SessionDialog } from '@/components/sessions/SessionDialog'
+import { PATIENTS } from '@/data/patients'
+import type { Booking } from '@/models/booking'
+import { nameMap } from '@/lib/patients/selectors'
 
 const navigation = [
   { name: 'Patients', href: '/dashboard/patients', icon: UserGroupIcon },
@@ -72,6 +78,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   '/dashboard/bookings',
 ].includes(pathname)
   const [rightPanelContent, setRightPanelContent] = useState<ReactNode | null>(null)
+
+  // Tasks -> create session dialog (global, so you can create notes from anywhere)
+  const [taskSessionOpen, setTaskSessionOpen] = useState(false)
+  const [taskBooking, setTaskBooking] = useState<Booking | null>(null)
+  const names = useMemo(() => nameMap(PATIENTS), [])
+
+  function openSessionForBooking(b: Booking) {
+    setTaskBooking(b)
+    setTaskSessionOpen(true)
+  }
   return (
     <SnackbarProvider>
     <div>
@@ -285,6 +301,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </form>
 
               <div className="ml-auto flex items-center gap-x-4 lg:gap-x-6">
+                {/* Tasks (action-required) */}
+                <TasksMenu
+                  patientNameForId={(id) => names.get(id) ?? id}
+                  onCreateSession={openSessionForBooking}
+                />
+
                 <button
                   type="button"
                   className="-m-2.5 rounded-md p-2.5 text-ink/60 hover:bg-brand-300/10 hover:text-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-600"
@@ -389,6 +411,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 )}
         </div>
       </RightPanelContext.Provider>
+
+      {/* Global session dialog opened from Tasks */}
+      <SessionDialog
+        open={taskSessionOpen}
+        onClose={() => {
+          setTaskSessionOpen(false)
+          setTaskBooking(null)
+        }}
+        mode="create"
+        patientId={taskBooking?.patientId}
+        patientName={
+          taskBooking ? (names.get(taskBooking.patientId) ?? undefined) : undefined
+        }
+        bookingContext={
+          taskBooking
+            ? { id: taskBooking.id, code: taskBooking.code, start: taskBooking.start }
+            : undefined
+        }
+        onCreated={() => {
+          setTaskSessionOpen(false)
+          setTaskBooking(null)
+        }}
+      />
       </div>
     </SnackbarProvider>
   )

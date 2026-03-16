@@ -44,6 +44,25 @@ export default function BookingsPage() {
 
   const [bookings, setBookings] = useState<Booking[]>(BOOKINGS)
 
+  // Prefer the API boundary once mounted (keeps Tasks + other pages consistent)
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await fetch('/api/bookings', { cache: 'no-store' })
+        if (!res.ok) return
+        const items: Booking[] = await res.json()
+        if (!alive) return
+        setBookings(items)
+      } catch {
+        // fallback to seeded BOOKINGS
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [])
+
   // dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
@@ -118,6 +137,26 @@ export default function BookingsPage() {
   function handleCreateSessionFromBooking(booking: Booking) {
     setSessionBooking(booking)
     setSessionDialogOpen(true)
+  }
+
+  async function patchBooking(id: string, patch: Partial<Booking>) {
+    const res = await fetch(`/api/bookings/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      },
+    )
+    if (!res.ok) {
+      const data = await res.json().catch(() => null)
+      throw new Error(data?.error ?? 'Failed to update booking')
+    }
+    return (await res.json()) as Booking
+  }
+
+  async function handleSetStatus(b: Booking, next: Booking['status']) {
+    const updated = await patchBooking(b.id, { status: next })
+    setBookings(prev => prev.map(x => (x.id === updated.id ? updated : x)))
   }
 
   function handleViewBooking(b: Booking) {
@@ -230,8 +269,8 @@ export default function BookingsPage() {
                       <BookingActionButtons
                         onView={() => handleViewBooking(b)}
                         onReschedule={() => handleEditBooking(b)}
-                        onCancel={() => console.log('cancel', b.id)}
-                        onNoShow={() => console.log('set no-show', b.id)}
+                        onCancel={() => handleSetStatus(b, 'cancelled')}
+                        onNoShow={() => handleSetStatus(b, 'no-show')}
                         onDelete={() => console.log('delete booking', b.id)}
                         extras={[
                           {
@@ -300,8 +339,8 @@ export default function BookingsPage() {
                 <BookingActionButtons
                   onView={() => handleViewBooking(b)}
                   onReschedule={() => handleEditBooking(b)}
-                  onCancel={() => console.log('cancel', b.id)}
-                  onNoShow={() => console.log('no-show', b.id)}
+                  onCancel={() => handleSetStatus(b, 'cancelled')}
+                  onNoShow={() => handleSetStatus(b, 'no-show')}
                   onDelete={() => console.log('delete booking', b.id)}
                   extras={[
                           {
@@ -361,8 +400,8 @@ export default function BookingsPage() {
                       <BookingActionButtons
                         onView={() => handleViewBooking(b)}
                         onReschedule={() => handleEditBooking(b)}
-                        onCancel={() => console.log('cancel', b.id)}
-                        onNoShow={() => console.log('set no-show', b.id)}
+                        onCancel={() => handleSetStatus(b, 'cancelled')}
+                        onNoShow={() => handleSetStatus(b, 'no-show')}
                         onDelete={() => console.log('delete booking', b.id)}
                         extras={[
                           {
@@ -431,8 +470,8 @@ export default function BookingsPage() {
                 <BookingActionButtons
                   onView={() => handleViewBooking(b)}
                   onReschedule={() => handleEditBooking(b)}
-                  onCancel={() => console.log('cancel', b.id)}
-                  onNoShow={() => console.log('no-show', b.id)}
+                  onCancel={() => handleSetStatus(b, 'cancelled')}
+                  onNoShow={() => handleSetStatus(b, 'no-show')}
                   onDelete={() => console.log('delete booking', b.id)}
                   extras={[
                           {
@@ -479,7 +518,14 @@ export default function BookingsPage() {
             : undefined
         }
         onCreated={() => {
-          // Close after successful creation; Sessions page will pick it up via API
+          // Close after successful creation; refresh bookings so sessionId/status are reflected
+          fetch('/api/bookings', { cache: 'no-store' })
+            .then(r => (r.ok ? r.json() : null))
+            .then((items: Booking[] | null) => {
+              if (items) setBookings(items)
+            })
+            .catch(() => null)
+
           setSessionDialogOpen(false)
           setSessionBooking(null)
         }}

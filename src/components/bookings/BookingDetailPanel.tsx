@@ -21,7 +21,7 @@ export function BookingDetailPanel({ booking, patientName }: Props) {
           <p className="text-xs font-semibold uppercase tracking-wide text-ink/60">
             Booking
           </p>
-          <h2 className="text-base font-semibold text-ink">{booking.service}</h2>
+          <h2 className="text-base font-semibold text-ink">{booking.serviceName}</h2>
           <p className="text-xs text-ink/60">
             {patientName} · {dt.format(start)} · {timeFmt.format(start)} –{' '}
             {timeFmt.format(end)}
