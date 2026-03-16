@@ -27,6 +27,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     startDateTime: body.startDateTime ?? now.toISOString(),
     chiefComplaint: body.chiefComplaint ?? '',
     techniques: body.techniques ?? [],
+    bookingId: body.bookingId ?? null,
   }
 
   sessionsStore.push(newSession)

@@ -1,75 +1,57 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { ChevronDownIcon } from '@heroicons/react/24/solid'
+import { useState, type ReactNode } from 'react'
+import { ChevronDownIcon } from '@heroicons/react/24/outline'
 import { cn } from '@/lib/cn'
+
+type CollapsibleProps = {
+  title: string
+  count?: number
+  defaultOpen?: boolean
+  children: ReactNode
+}
 
 export function Collapsible({
   title,
   count,
   defaultOpen = true,
   children,
-  className,
-}: {
-  title: string
-  count?: number
-  defaultOpen?: boolean
-  children: React.ReactNode
-  className?: string
-}) {
+}: CollapsibleProps) {
   const [open, setOpen] = useState(defaultOpen)
-  const ref = useRef<HTMLDivElement>(null)
-
-  // keep height in sync while open
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const ro = new ResizeObserver(() => {
-      if (open) el.style.maxHeight = `${el.scrollHeight}px`
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [open])
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    el.style.maxHeight = open ? `${el.scrollHeight}px` : '0px'
-  }, [open])
 
   return (
-    <section className={cn('space-y-4', className)}>
-      <header className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold tracking-wide text-ink">
-          {title}
+    <section className="space-y-4">
+      <header className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-ink">{title}</h2>
           {typeof count === 'number' && (
-            <span className="ml-2 inline-flex rounded-full bg-brand-300/20 px-2 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-300/40">
+            <span className="rounded-full border border-brand-300/60 bg-brand-300/10 px-2 py-0.5 text-xs text-brand-900">
               {count}
             </span>
           )}
-        </h2>
+        </div>
         <button
           type="button"
-          onClick={() => setOpen(v => !v)}
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-ink/80 hover:bg-brand-300/15 focus:outline-none"
-          aria-expanded={open}
-          aria-controls={`collapsible-${title}`}
+          onClick={() => setOpen(o => !o)}
+          className="flex items-center gap-1 text-xs font-medium text-ink/70 hover:text-ink"
         >
           {open ? 'Hide' : 'Show'}
-          <ChevronDownIcon className={cn('h-4 w-4 transition-transform', open ? 'rotate-180' : 'rotate-0')} />
+          <ChevronDownIcon
+            className={cn(
+              'h-3 w-3 transition-transform',
+              open ? 'rotate-180' : 'rotate-0',
+            )}
+          />
         </button>
       </header>
 
       <div
-        id={`collapsible-${title}`}
-        ref={ref}
-        className="overflow-hidden transition-[max-height] duration-300"
-        style={{ maxHeight: defaultOpen ? '9999px' : '0px' }}
+        className={cn(
+          'overflow-hidden transition-[max-height] duration-300',
+          open ? 'max-h-[9999px]' : 'max-h-0',
+        )}
       >
-        {/* IMPORTANT: exactly one wrapping child for height calc */}
-        <div className="py-0">
-          {children}
-        </div>
+        <div className="py-0">{children}</div>
       </div>
     </section>
   )

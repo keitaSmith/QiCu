@@ -5,8 +5,11 @@ import { Dialog, DialogBackdrop, DialogPanel } from '@headlessui/react'
 
 import type { Booking } from '@/models/booking'
 import { useSnackbar } from '@/components/ui/Snackbar'
-import { DateTimeField } from '@/components/ui/DateTimeField'
 import SelectField, { type SelectOption } from '@/components/ui/SelectField'
+import { SERVICES, findServiceById } from '@/data/services'
+
+import { BookingTimePicker } from '@/components/bookings/BookingTimePicker'
+import { timeFmt } from '@/lib/dates'
 
 type PatientOption = { id: string; name: string }
 
@@ -26,6 +29,7 @@ type BookingDialogProps = {
 
   onCreated?: (booking: Booking) => void
   onUpdated?: (booking: Booking) => void
+  existingBookings: Booking[]
 }
 
 function toLocalDatetimeInputValue(d: Date): string {
@@ -38,6 +42,10 @@ function toLocalDatetimeInputValue(d: Date): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`
 }
 
+function generateBookingCode() {
+  return `BKG-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
+}
+
 export function BookingDialog({
   open,
   onClose,
@@ -48,26 +56,39 @@ export function BookingDialog({
   patients,
   onCreated,
   onUpdated,
+  existingBookings,
 }: BookingDialogProps) {
   const { showSnackbar } = useSnackbar()
   const isEdit = mode === 'edit' && !!booking
 
-  const [startLocal, setStartLocal] = useState('')
-  const [endLocal, setEndLocal] = useState('')
-  const [service, setService] = useState('')
-  const [resource, setResource] = useState('')
-  const [notes, setNotes] = useState('')
+  const [startLocal, setStartLocal] = useState<string>('')
+  const [endLocal, setEndLocal] = useState<string>('')
 
-  const [selectedPatientId, setSelectedPatientId] = useState('')
+  const [selectedPatientId, setSelectedPatientId] = useState<string>('')
+
+  const [serviceId, setServiceId] = useState<string>('')
+  const [serviceName, setServiceName] = useState<string>('')
+  const [serviceDurationMinutes, setServiceDurationMinutes] =
+    useState<number | null>(null)
+
+  const [resource, setResource] = useState<string>('')
+  const [notes, setNotes] = useState<string>('')
+
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const canChoosePatient = !patientId && patients && patients.length > 0 && !isEdit
+  const canChoosePatient =
+    !patientId && patients && patients.length > 0 && !isEdit
 
   const patientSelectOptions: SelectOption<string>[] =
     patients?.map(p => ({ value: p.id, label: p.name })) ?? []
 
-  // initialise form
+  const serviceOptions: SelectOption<string>[] = SERVICES.map(s => ({
+    value: s.id,
+    label: `${s.name} ${s.durationMinutes} min`,
+  }))
+
+  // Initialise form when dialog opens or mode changes
   useEffect(() => {
     if (!open) return
 
@@ -75,22 +96,23 @@ export function BookingDialog({
     setSubmitting(false)
 
     if (isEdit && booking) {
-      const startD = new Date(booking.start)
-      const endD = new Date(booking.end)
+      setStartLocal(booking.start)
+      setEndLocal(booking.end)
 
-      setStartLocal(toLocalDatetimeInputValue(startD))
-      setEndLocal(toLocalDatetimeInputValue(endD))
-      setService(booking.service)
+      setServiceId(booking.serviceId)
+      setServiceName(booking.serviceName)
+      setServiceDurationMinutes(booking.serviceDurationMinutes)
+
       setResource(booking.resource ?? '')
       setNotes(booking.notes ?? '')
-      // patient is fixed in edit
     } else {
-      const now = new Date()
-      const inOneHour = new Date(now.getTime() + 60 * 60 * 1000)
+      setStartLocal('')
+      setEndLocal('')
 
-      setStartLocal(toLocalDatetimeInputValue(now))
-      setEndLocal(toLocalDatetimeInputValue(inOneHour))
-      setService('')
+      setServiceId('')
+      setServiceName('')
+      setServiceDurationMinutes(null)
+
       setResource('')
       setNotes('')
 
@@ -100,144 +122,121 @@ export function BookingDialog({
     }
   }, [open, isEdit, booking, patientId])
 
+  // Auto-calc end time when service duration or start time changes
+  useEffect(() => {
+    if (!serviceDurationMinutes || !startLocal) {
+      setEndLocal('')
+      return
+    }
+    const startDate = new Date(startLocal)
+    if (Number.isNaN(startDate.getTime())) return
+
+    const endDate = new Date(startDate.getTime() + serviceDurationMinutes * 60_000)
+    setEndLocal(toLocalDatetimeInputValue(endDate))
+  }, [serviceDurationMinutes, startLocal])
+
+  const title = isEdit ? 'Edit booking' : 'New booking'
+
+  const effectivePatientName =
+    patientName ??
+    (booking ? patients?.find(p => p.id === booking.patientId)?.name : undefined)
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    setError(null)
 
     const effectivePatientId =
-      isEdit && booking
-        ? booking.patientId
-        : patientId ?? selectedPatientId
+      isEdit && booking ? booking.patientId : patientId ?? selectedPatientId
 
     if (!effectivePatientId) {
       setError('Please choose a patient for this booking.')
       return
     }
 
+    if (!serviceId || !serviceName || !serviceDurationMinutes) {
+      setError('Please select a service.')
+      return
+    }
+
     if (!startLocal) {
-      setError('Please set a booking start time.')
+      setError('Please choose a start time.')
       return
     }
 
     if (!endLocal) {
-      setError('Please set a booking end time.')
+      setError('End time could not be determined.')
       return
     }
 
-    if (!service.trim()) {
-      setError('Please enter a service name.')
-      return
-    }
-
+    setSubmitting(true)
     try {
-      setSubmitting(true)
-      setError(null)
-
-      const isoStart = new Date(startLocal).toISOString()
-      const isoEnd = new Date(endLocal).toISOString()
-
-      const payload: any = {
-        start: isoStart,
-        end: isoEnd,
-        service: service.trim(),
-        resource: resource.trim() || undefined,
-        notes: notes.trim() || undefined,
-      }
-
-      let endpoint: string
-      let method: 'POST' | 'PATCH' = 'POST'
-
       if (isEdit && booking) {
-        endpoint = `/api/bookings/${encodeURIComponent(booking.id)}`
-        method = 'PATCH'
-      } else {
-        endpoint = `/api/patients/${encodeURIComponent(effectivePatientId)}/bookings`
-        method = 'POST'
-      }
+        const updated: Booking = {
+          ...booking,
+          patientId: effectivePatientId,
+          serviceId,
+          serviceName,
+          serviceDurationMinutes,
+          start: startLocal,
+          end: endLocal,
+          resource: resource || '',
+          notes: notes || '',
+        }
 
-      const res = await fetch(endpoint, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      if (!res.ok) {
-  const data = await res.json().catch(() => null)
-  const msg =
-    data?.error ||
-    (res.status >= 500
-      ? 'Server error while saving booking'
-      : 'Failed to save booking')
-
-  console.error('Failed to save booking', res.status, data)
-
-  const friendly = msg || 'Failed to save booking'
-
-  setError(friendly)
-  showSnackbar({
-    variant: 'error',
-    message: friendly,
-  })
-
-  setSubmitting(false)
-  return
-}
-
-
-      const saved: Booking = await res.json()
-
-      if (isEdit) {
-        onUpdated?.(saved)
+        onUpdated?.(updated)
         showSnackbar({
           variant: 'success',
-          message: 'Booking was successfully updated',
+          message: 'Booking updated.',
         })
       } else {
-        onCreated?.(saved)
+        const newBooking: Booking = {
+          id: crypto.randomUUID(),
+          code: generateBookingCode(),
+          patientId: effectivePatientId,
+          serviceId,
+          serviceName,
+          serviceDurationMinutes,
+          start: startLocal,
+          end: endLocal,
+          resource: resource || '',
+          status: 'confirmed',
+          notes: notes || '',
+        }
 
-        const resolvedName =
-          patientName ??
-          patients?.find(p => p.id === saved.patientId)?.name ??
-          'Patient'
-
+        onCreated?.(newBooking)
         showSnackbar({
           variant: 'success',
-          message: `New booking created for ${resolvedName}`,
+          message: 'Booking created.',
         })
       }
 
       onClose()
-    } catch (err: any) {
-      console.error('Failed to save booking', err)
-      setError(err?.message ?? 'Failed to save booking')
+    } catch (err) {
+      console.error(err)
+      setError('Something went wrong while saving the booking.')
       showSnackbar({
         variant: 'error',
-        message: 'Could not save booking. Please try again.',
+        message: 'Failed to save booking.',
       })
     } finally {
       setSubmitting(false)
     }
   }
 
-  const title =
-    isEdit && booking
-      ? 'Edit booking'
-      : patientName
-      ? `New booking for ${patientName}`
-      : 'New booking'
-
   return (
     <Dialog open={open} onClose={onClose} className="relative z-40">
       <DialogBackdrop className="fixed inset-0 bg-black/30" />
 
-      <div className="fixed inset-0 flex items-center justify-center p-4">
-        <div className="mx-auto w-full max-w-lg">
-          <DialogPanel className="rounded-2xl bg-surface p-6 shadow-xl ring-1 ring-black/5">
+      {/* This wrapper enables scrolling when viewport is small */}
+      <div className="fixed inset-0 z-40 overflow-y-auto">
+        <div className="flex min-h-full items-center justify-center p-4">
+          <DialogPanel className="mx-auto w-full max-w-lg rounded-2xl bg-surface p-6 shadow-xl ring-1 ring-black/5">
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-ink">{title}</h2>
               <p className="mt-1 text-sm text-ink/70">
                 {isEdit
                   ? 'Update the details of this booking.'
-                  : 'Schedule a new booking for your patient.'}
+                  : 'Create a new booking for this patient.'}
               </p>
             </div>
 
@@ -255,51 +254,64 @@ export function BookingDialog({
                 </div>
               )}
 
-              {(patientId && patientName) || (isEdit && booking) ? (
+              {!canChoosePatient && (patientId || effectivePatientName) && (
                 <div>
                   <label className="mb-1 block text-xs text-ink/60">
                     Patient
                   </label>
                   <p className="border-0 border-b border-brand-300/40 bg-transparent py-2 text-sm text-ink">
-                    {patientName ??
-                      patients?.find(p => p.id === booking?.patientId)?.name ??
-                      'Patient'}
+                    {effectivePatientName ?? 'Patient'}
                   </p>
                 </div>
-              ) : null}
+              )}
 
-              <DateTimeField
-                label="Start time"
-                name="start"
-                value={startLocal}
-                onChange={setStartLocal}
-                required
-                helperText="Local date and time when the appointment starts."
-              />
-
-              <DateTimeField
-                label="End time"
-                name="end"
-                value={endLocal}
-                onChange={setEndLocal}
-                required
-                helperText="Local date and time when the appointment ends."
-              />
-
+              {/* Service */}
               <div>
-                <label className="mb-1 block text-xs text-ink/60">
-                  Service
-                </label>
-                <input
-                  type="text"
+                <SelectField<string>
+                  label="Service"
+                  value={serviceId || null}
+                  onChange={value => {
+                    const id = value || ''
+                    setServiceId(id)
+                    const svc = findServiceById(id)
+                    if (svc) {
+                      setServiceName(svc.name)
+                      setServiceDurationMinutes(svc.durationMinutes)
+                    } else {
+                      setServiceName('')
+                      setServiceDurationMinutes(null)
+                    }
+                    // reset time when service changes so picker can recompute
+                    setStartLocal('')
+                    setEndLocal('')
+                  }}
+                  options={serviceOptions}
+                  placeholder="Select a service…"
                   required
-                  value={service}
-                  onChange={e => setService(e.target.value)}
-                  placeholder="e.g. Acupuncture 60m"
-                  className="w-full border-0 border-b border-brand-300/40 bg-transparent py-2 text-sm text-ink placeholder:text-ink/40 focus:border-brand-300 focus:outline-none focus:ring-0"
+                  helperText="Choose which treatment this booking is for."
                 />
               </div>
 
+                            {/* Schedule – inline BookingTimePicker */}
+              {serviceId && (
+                <div>
+                  <BookingTimePicker
+                    label="Start time"
+                    value={startLocal || null}
+                    onChange={newValue => setStartLocal(newValue ?? '')}
+                    serviceDurationMinutes={serviceDurationMinutes}
+                    existingBookings={existingBookings}
+                  />
+                  {startLocal && serviceDurationMinutes && endLocal && (
+                    <p className="mt-1 text-xs text-ink/60">
+                      Ends around {timeFmt.format(new Date(endLocal))}
+                    </p>
+                  )}
+                </div>
+              )}
+
+
+              {/* Resource */}
               <div>
                 <label className="mb-1 block text-xs text-ink/60">
                   Resource (optional)
@@ -308,25 +320,28 @@ export function BookingDialog({
                   type="text"
                   value={resource}
                   onChange={e => setResource(e.target.value)}
-                  placeholder="e.g. Room 1, Therapist Ana"
-                  className="w-full border-0 border-b border-brand-300/40 bg-transparent py-2 text-sm text-ink placeholder:text-ink/40 focus:border-brand-300 focus:outline-none focus:ring-0"
+                  className="w-full border-0 border-b border-brand-300/40 bg-transparent py-2 text-sm text-ink placeholder:text-ink/40 focus:border-brand-300 focus:outline-none"
+                  placeholder="Room, practitioner name, etc."
                 />
               </div>
 
+              {/* Notes */}
               <div>
                 <label className="mb-1 block text-xs text-ink/60">
                   Notes (optional)
                 </label>
                 <textarea
-                  rows={3}
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
-                  placeholder="Internal notes about this booking…"
-                  className="w-full border-0 border-b border-brand-300/40 bg-transparent py-2 text-sm text-ink placeholder:text-ink/40 focus:border-brand-300 focus:outline-none focus:ring-0"
+                  className="w-full min-h-[3rem] border-0 border-b border-brand-300/40 bg-transparent py-2 text-sm text-ink placeholder:text-ink/40 focus:border-brand-300 focus:outline-none resize-y min-h-[3rem]"
+                  rows={3}
+                  placeholder="Anything relevant for this appointment…"
                 />
               </div>
 
-              {error && <p className="text-sm text-red-600">{error}</p>}
+              {error && (
+                <p className="text-sm text-red-600">{error}</p>
+              )}
 
               <div className="mt-4 flex justify-end gap-2">
                 <button

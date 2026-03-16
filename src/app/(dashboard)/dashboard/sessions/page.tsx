@@ -1,5 +1,6 @@
 'use client'
-
+import { BOOKINGS } from '@/data/bookings'
+import type { Booking } from '@/models/booking'
 import { useEffect, useMemo, useState } from 'react'
 //import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { SearchField } from '@/components/ui/SearchField'
@@ -26,10 +27,25 @@ export default function SessionsPage() {
   const [selectedSession, setSelectedSession] = useState<Session | null>(null)
   const { setRightPanelContent } = useRightPanel()
 
+
+
   useEffect(() => {
     setRightPanelContent(null)
   }, [setRightPanelContent])
-
+  const bookingMap = useMemo(
+  () =>
+    new Map(
+      BOOKINGS.map(b => [
+        b.id,
+        {
+          id: b.id,
+          code: b.code,
+          start: b.start,
+        },
+      ]),
+    ),
+  [],
+)
   // Patient options for the "New session" dialog when opened from this page
   const patientOptions = useMemo(
     () =>
@@ -170,6 +186,7 @@ export default function SessionsPage() {
                 <Th>Time</Th>
                 <Th>Chief complaint</Th>
                 <Th>Techniques</Th>
+                <Th>Booking</Th>
                 <Th className="text-right rounded-tr-md rounded-br-md">Actions</Th>
               </Tr>
             </THead>
@@ -178,11 +195,15 @@ export default function SessionsPage() {
               {loading && <TableSkeleton rows={3} columns={6} />}
 
               {/* Actual rows once loaded */}
-              {!loading &&
+                            {!loading &&
                 filtered.map(s => {
                   const when = new Date(s.startDateTime)
                   const patientName = names.get(s.patientId) ?? s.patientId
                   const techniques = (s.techniques ?? []).join(', ')
+
+                  const linkedBooking = s.bookingId
+                    ? bookingMap.get(s.bookingId) ?? null
+                    : null
 
                   return (
                     <Tr key={s.id}>
@@ -191,6 +212,19 @@ export default function SessionsPage() {
                       <Td className="text-ink/80">{timeFmt.format(when)}</Td>
                       <Td className="text-ink/80">{s.chiefComplaint}</Td>
                       <Td className="text-ink/80">{techniques || '—'}</Td>
+                      <Td className="text-ink/80 text-sm">
+                        {linkedBooking ? (
+                          <>
+                            <span className="font-medium">{linkedBooking.code}</span>{' '}
+                            <span className="text-ink/60">
+                              ({dt.format(new Date(linkedBooking.start))} ·{' '}
+                              {timeFmt.format(new Date(linkedBooking.start))})
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-ink/60 text-xs">No booking</span>
+                        )}
+                      </Td>
                       <Td className="text-right">
                         <SessionActionButtons
                           onEdit={() => handleEdit(s)}
@@ -241,7 +275,9 @@ export default function SessionsPage() {
             const when = new Date(s.startDateTime)
             const patientName = names.get(s.patientId) ?? s.patientId
             const techniques = (s.techniques ?? []).join(', ')
-
+            const linkedBooking = s.bookingId
+              ? bookingMap.get(s.bookingId) ?? null
+              : null
             return (
               <div
                 key={s.id}
@@ -254,6 +290,14 @@ export default function SessionsPage() {
                     <div className="mt-1 text-xs text-ink/70">
                       {dt.format(when)} · {timeFmt.format(when)}
                     </div>
+                    {linkedBooking && (
+                      <div className="mt-1 text-xs text-ink/60">
+                        From booking{' '}
+                        <span className="font-medium">{linkedBooking.code}</span>{' '}
+                        ({dt.format(new Date(linkedBooking.start))} ·{' '}
+                        {timeFmt.format(new Date(linkedBooking.start))})
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -291,23 +335,24 @@ export default function SessionsPage() {
       </div>
 
       {/* Create session dialog */}
-      <SessionDialog
-          open={dialogOpen}
-          onClose={() => setDialogOpen(false)}
-          mode={dialogMode}
-          session={editingSession ?? undefined}
-          patientId={dialogPatient?.id ?? null}
-          patientName={dialogPatient?.name}
-          patients={patientOptions}
-          onCreated={session => {
-            setSessions(prev => [session, ...prev])
-          }}
-          onUpdated={session => {
-            setSessions(prev =>
-              prev.map(s => (s.id === session.id ? session : s)),
-            )
-          }}
-        />
+            <SessionDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        mode={dialogMode}
+        session={editingSession ?? undefined}
+        patientId={dialogPatient?.id}
+        patientName={dialogPatient?.name}
+        patients={patientOptions}
+        bookings={BOOKINGS}
+        onCreated={session => {
+          setSessions(prev => [session, ...prev])
+        }}
+        onUpdated={session => {
+          setSessions(prev =>
+            prev.map(s => (s.id === session.id ? session : s)),
+          )
+        }}
+      />
     </div>
   )
 }

@@ -41,6 +41,7 @@ export type Session = {
 
   treatmentNotes?: string     // free-text SOAP-style note
   basicVitals?: BasicVitals   // completely optional
+  bookingId?: string | null
 }
 
 /**

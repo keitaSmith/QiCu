@@ -4,6 +4,7 @@ import { useEffect, useState, FormEvent } from 'react'
 import { Dialog, DialogBackdrop, DialogPanel } from '@headlessui/react'
 
 import type { Session } from '@/models/session'
+import type { Booking } from '@/models/booking'
 import { useSnackbar } from '@/components/ui/Snackbar'
 import { DateTimeField } from '@/components/ui/DateTimeField'
 import SelectField, { type SelectOption } from '@/components/ui/SelectField'
@@ -17,12 +18,25 @@ type SessionDialogProps = {
   mode?: 'create' | 'edit'
   session?: Session
 
-  /** For create mode: fixed patient (when opened from Patients or Sessions list) */
+  /** For create mode: fixed patient (when opened from Patients / Bookings list) */
   patientId?: string | null
   patientName?: string
 
   /** For create mode from Sessions page: choose patient */
   patients?: PatientOption[]
+
+  /** All bookings (Sessions page passes this so user can choose one) */
+  bookings?: Booking[]
+
+  /**
+   * When opening "Create session" from a specific booking row
+   * on the Bookings page.
+   */
+  bookingContext?: {
+    id: string
+    code: string
+    start: string // ISO datetime
+  }
 
   onCreated?: (session: Session) => void
   onUpdated?: (session: Session) => void
@@ -46,6 +60,8 @@ export function SessionDialog({
   patientId,
   patientName,
   patients,
+  bookings,
+  bookingContext,
   onCreated,
   onUpdated,
 }: SessionDialogProps) {
@@ -59,10 +75,26 @@ export function SessionDialog({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Booking link state (Sessions-page flow)
+  const [linkToBooking, setLinkToBooking] = useState<'yes' | 'no'>('no')
+  const [selectedBookingId, setSelectedBookingId] = useState('')
+
   const canChoosePatient = !patientId && patients && patients.length > 0 && !isEdit
 
   const patientSelectOptions: SelectOption<string>[] =
     patients?.map(p => ({ value: p.id, label: p.name })) ?? []
+
+  // Which patient is active in this form right now?
+  const currentPatientId =
+    (isEdit && session ? session.patientId : patientId ?? selectedPatientId) ?? ''
+
+  const bookingsForPatient: Booking[] =
+    bookings?.filter(b => b.patientId === currentPatientId) ?? []
+
+  const bookingSelectOptions: SelectOption<string>[] = bookingsForPatient.map(b => ({
+    value: b.id,
+    label: `${b.code} — ${new Date(b.start).toLocaleString()}`,
+  }))
 
   // initialise form
   useEffect(() => {
@@ -76,16 +108,38 @@ export function SessionDialog({
       setStartLocal(toLocalDatetimeInputValue(d))
       setChiefComplaint(session.chiefComplaint)
       setTechniques((session.techniques ?? []).join(', '))
-      // patientId is fixed when editing
+
+      // Editing existing session: try to restore its booking link if we know about it
+      if (session.bookingId && bookings && bookings.length > 0) {
+        const hasValidBooking = bookings.some(b => b.id === session.bookingId)
+        if (hasValidBooking) {
+          setLinkToBooking('yes')
+          setSelectedBookingId(session.bookingId)
+        } else {
+          setLinkToBooking('no')
+          setSelectedBookingId('')
+        }
+      } else {
+        setLinkToBooking('no')
+        setSelectedBookingId('')
+      }
     } else {
-      setStartLocal(toLocalDatetimeInputValue(new Date()))
+      // Create mode
+      const baseDate = bookingContext
+        ? new Date(bookingContext.start)
+        : new Date()
+
+      setStartLocal(toLocalDatetimeInputValue(baseDate))
       setChiefComplaint('')
       setTechniques('')
+      setLinkToBooking('no')
+      setSelectedBookingId('')
+
       if (!patientId) {
         setSelectedPatientId('')
       }
     }
-  }, [open, isEdit, session, patientId])
+  }, [open, isEdit, session, patientId, bookings, bookingContext])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -100,16 +154,50 @@ export function SessionDialog({
       return
     }
 
-    if (!startLocal) {
-      setError('Please set a session start time.')
-      return
+    let isoStart: string
+    // bookingIdToSend:
+    //   undefined => don't touch bookingId
+    //   string    => set bookingId
+    //   null      => explicitly clear bookingId
+    let bookingIdToSend: string | null | undefined
+
+    // 1) If coming from a specific booking row (Bookings page create)
+    if (bookingContext && !isEdit) {
+      isoStart = new Date(bookingContext.start).toISOString()
+      bookingIdToSend = bookingContext.id
+    } else {
+      // 2) Generic Sessions-page flow
+      if (linkToBooking === 'yes') {
+        const allBookings = bookings ?? []
+        if (!selectedBookingId) {
+          setError('Please select which booking this session is for.')
+          return
+        }
+        const chosen = allBookings.find(b => b.id === selectedBookingId)
+        if (!chosen) {
+          setError('The selected booking could not be found.')
+          return
+        }
+        isoStart = new Date(chosen.start).toISOString()
+        bookingIdToSend = chosen.id
+      } else {
+        // No booking link – manual date/time
+        if (!startLocal) {
+          setError('Please set a session start time.')
+          return
+        }
+        isoStart = new Date(startLocal).toISOString()
+
+        // If editing and it previously had a booking, clear it
+        if (isEdit && session?.bookingId) {
+          bookingIdToSend = null
+        }
+      }
     }
 
     try {
       setSubmitting(true)
       setError(null)
-
-      const isoStart = new Date(startLocal).toISOString()
 
       const payload: any = {
         startDateTime: isoStart,
@@ -123,6 +211,10 @@ export function SessionDialog({
           .filter(Boolean)
       } else {
         payload.techniques = []
+      }
+
+      if (bookingIdToSend !== undefined) {
+        payload.bookingId = bookingIdToSend
       }
 
       let endpoint: string
@@ -236,14 +328,113 @@ export function SessionDialog({
                 </div>
               ) : null}
 
-              <DateTimeField
-                label="Session start"
-                name="startDateTime"
-                value={startLocal}
-                onChange={setStartLocal}
-                required
-                helperText="Local date and time of the treatment session."
-              />
+              {/* If coming from a specific booking row (Bookings page),
+                  just show info about that booking */}
+              {bookingContext ? (
+                <div className="mt-2 text-xs text-ink/60">
+                  This session will be linked to booking{' '}
+                  <span className="font-medium">{bookingContext.code}</span>{' '}
+                  on{' '}
+                  {new Date(bookingContext.start).toLocaleString(undefined, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                  .
+                </div>
+              ) : (
+                <>
+                  {/* Sessions-page booking link logic */}
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs text-ink/60">
+                      Is there a booking for this particular session?
+                    </p>
+
+                    {!currentPatientId && (
+                      <p className="text-xs text-ink/60">
+                        Select a patient first to see their bookings.
+                      </p>
+                    )}
+
+                    {currentPatientId && (
+                      <>
+                        <div className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-4">
+                          <label className="inline-flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="linkToBooking"
+                              value="no"
+                              checked={linkToBooking === 'no'}
+                              onChange={() => setLinkToBooking('no')}
+                            />
+                            <span>No, set date &amp; time manually</span>
+                          </label>
+                          <label className="inline-flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="linkToBooking"
+                              value="yes"
+                              checked={linkToBooking === 'yes'}
+                              onChange={() => {
+                                setLinkToBooking('yes')
+                                setSelectedBookingId('')
+                              }}
+                              disabled={bookingsForPatient.length === 0}
+                            />
+                            <span>
+                              Yes, link to a booking
+                              {bookingsForPatient.length === 0
+                                ? ' (no bookings for this patient yet)'
+                                : ''}
+                            </span>
+                          </label>
+                        </div>
+
+                        {linkToBooking === 'yes' && bookingsForPatient.length > 0 && (
+                          <div className="mt-2">
+                            <SelectField<string>
+                              label="Which booking is this session for?"
+                              value={selectedBookingId || null}
+                              onChange={value => {
+                                const id = value ?? ''
+                                setSelectedBookingId(id)
+                                const chosen = bookingsForPatient.find(b => b.id === id)
+                                if (chosen) {
+                                  setStartLocal(
+                                    toLocalDatetimeInputValue(
+                                      new Date(chosen.start),
+                                    ),
+                                  )
+                                }
+                              }}
+                              options={bookingSelectOptions}
+                              placeholder="Select a booking…"
+                              required
+                            />
+                            <p className="mt-1 text-xs text-ink/60">
+                              The session date and time will be taken from the booking you
+                              choose.
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Manual date/time: shown when not tied to a specific booking
+                  and either "No" is selected or there are no bookings */}
+              {(!bookingContext &&
+                (linkToBooking === 'no' || bookingsForPatient.length === 0)) && (
+                <DateTimeField
+                  label="Session start"
+                  name="startDateTime"
+                  value={startLocal}
+                  onChange={setStartLocal}
+                  required
+                  helperText="Local date and time of the treatment session."
+                />
+              )}
 
               <div>
                 <label className="mb-1 block text-xs text-ink/60">
@@ -254,8 +445,8 @@ export function SessionDialog({
                   rows={3}
                   value={chiefComplaint}
                   onChange={e => setChiefComplaint(e.target.value)}
-                  placeholder="e.g Patient has Chronic Reccuring Migrains which last for up to 3 days…"
-                  className="w-full border-0 border-b border-brand-300/40 bg-transparent py-2 text-sm text-ink placeholder:text-ink/40 focus:border-brand-300 focus:outline-none focus:ring-0"
+                  placeholder="e.g Patient has Chronic Recurring Migraines which last for up to 3 days…"
+                  className="w-full border-0 border-b border-slate-300 bg-transparent px-0 py-2 text-sm text-ink placeholder:text-ink/40 focus:border-brand-300 focus:outline-none focus:ring-0"
                 />
               </div>
 
@@ -268,7 +459,7 @@ export function SessionDialog({
                   value={techniques}
                   onChange={e => setTechniques(e.target.value)}
                   placeholder="e.g. cupping, acupuncture"
-                  className="w-full border-0 border-b border-brand-300/40 bg-transparent py-2 text-sm text-ink placeholder:text-ink/40 focus:border-brand-300 focus:outline-none focus:ring-0"
+                  className="w-full border-0 border-b border-slate-300 bg-transparent px-0 py-2 text-sm text-ink placeholder:text-ink/40 focus:border-brand-300 focus:outline-none focus:ring-0"
                 />
                 <p className="mt-1 text-xs text-ink/60">
                   Enter a comma-separated list. This maps to the{' '}

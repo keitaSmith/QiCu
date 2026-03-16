@@ -66,7 +66,7 @@ export function PatientDetailPanel({ patient, bookingsForPatient = [] }: Props) 
       {next && (
         <Section title="Next booking">
           <p className="font-medium text-ink">
-            {next.service}
+            {next.serviceName}
           </p>
           <p>
             {dt.format(new Date(next.start))} · {timeFmt.format(new Date(next.start))} –{' '}

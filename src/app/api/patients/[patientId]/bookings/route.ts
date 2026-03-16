@@ -2,11 +2,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { BOOKINGS } from '@/data/bookings'
 import type { Booking } from '@/models/booking'
+import { findServiceById } from '@/data/services'
 
 type CreateBookingBody = {
   start: string
   end: string
-  service: string
+  serviceId: string
   resource?: string
   notes?: string
 }
@@ -26,9 +27,9 @@ export async function POST(
 
   const body = (await req.json()) as Partial<CreateBookingBody>
 
-  if (!body.start || !body.end || !body.service) {
+  if (!body.start || !body.end || !body.serviceId) {
     return NextResponse.json(
-      { error: 'start, end and service are required' },
+      { error: 'start, end and serviceId are required' },
       { status: 400 },
     )
   }
@@ -50,6 +51,14 @@ export async function POST(
     )
   }
 
+  const svc = findServiceById(body.serviceId)
+  if (!svc) {
+    return NextResponse.json(
+      { error: 'Unknown serviceId' },
+      { status: 400 },
+    )
+  }
+
   const id = crypto.randomUUID()
   const code = `BKG-${start.getFullYear()}${String(
     start.getMonth() + 1,
@@ -62,7 +71,9 @@ export async function POST(
     id,
     code,
     patientId,
-    service: body.service.trim(),
+    serviceId: svc.id,
+    serviceName: svc.name,
+    serviceDurationMinutes: svc.durationMinutes,
     resource: body.resource?.trim() || undefined,
     start: start.toISOString(),
     end: end.toISOString(),
@@ -74,4 +85,3 @@ export async function POST(
 
   return NextResponse.json(newBooking, { status: 201 })
 }
-
