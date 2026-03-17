@@ -1,4 +1,5 @@
 'use client'
+
 import { SessionDialog } from '@/components/sessions/SessionDialog'
 
 import { useMemo, useState, useEffect } from 'react'
@@ -11,7 +12,6 @@ import type { Booking } from '@/models/booking'
 import { dateFmt as dt, timeFmt, isSameLocalDay, startOfDay } from '@/lib/dates'
 import { displayName, nameMap } from '@/lib/patients/selectors'
 
-// Shared table UI
 import {
   TableFrame,
   TableEl,
@@ -22,7 +22,6 @@ import {
   Td,
 } from '@/components/ui/QiCuTable'
 
-import { Collapsible } from '@/components/ui/Collapsible'
 import { BookingActionButtons } from '@/components/ui/RowActions'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 
@@ -32,65 +31,104 @@ import { BookingDialog } from '@/components/bookings/BookingDialog'
 
 import { useRouter } from 'next/navigation'
 import { useIsDesktop } from '@/lib/useIsDesktop'
+import { cn } from '@/lib/cn'
+import { BOOKINGS_CHANGED_EVENT, emitBookingsChanged } from '@/lib/booking-events'
 
 type PatientOption = { id: string; name: string }
+type ViewMode = 'today' | 'upcoming' | 'past'
+type StatusFilter = 'all' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show'
+
+type BookingWithDates = Booking & { startD: Date; endD: Date }
+
+const PAGE_SIZE = 10
+
+function statusLabel(status: Booking['status']) {
+  switch (status) {
+    case 'completed':
+      return 'Completed'
+    case 'in-progress':
+      return 'In progress'
+    case 'no-show':
+      return 'No-show'
+    default:
+      return status.replace(/\b\w/g, c => c.toUpperCase())
+  }
+}
+
+function isResolved(status: Booking['status']) {
+  return status === 'completed' || status === 'cancelled' || status === 'no-show'
+}
+
+function isVisibleInStatusFilter(booking: Booking, status: StatusFilter) {
+  if (status === 'all') return true
+  return booking.status === status
+}
 
 export default function BookingsPage() {
   const [q, setQ] = useState('')
-  const [status, setStatus] = useState<'all' | Booking['status']>('all')
+  const [status, setStatus] = useState<StatusFilter>('all')
+  const [view, setView] = useState<ViewMode>('today')
+  const [upcomingPage, setUpcomingPage] = useState(1)
+  const [pastPage, setPastPage] = useState(1)
   const { setRightPanelContent } = useRightPanel()
   const router = useRouter()
   const isDesktop = useIsDesktop()
 
   const [bookings, setBookings] = useState<Booking[]>(BOOKINGS)
 
-  // Prefer the API boundary once mounted (keeps Tasks + other pages consistent)
-  useEffect(() => {
-    let alive = true
-    ;(async () => {
-      try {
-        const res = await fetch('/api/bookings', { cache: 'no-store' })
-        if (!res.ok) return
-        const items: Booking[] = await res.json()
-        if (!alive) return
-        setBookings(items)
-      } catch {
-        // fallback to seeded BOOKINGS
-      }
-    })()
-    return () => {
-      alive = false
+  const refreshBookings = useMemo(() => async () => {
+    try {
+      const res = await fetch('/api/bookings', { cache: 'no-store' })
+      if (!res.ok) return
+      const items: Booking[] = await res.json()
+      setBookings(items)
+    } catch {
+      // fallback to seeded BOOKINGS
     }
   }, [])
 
-  // dialog state
+  useEffect(() => {
+    refreshBookings()
+  }, [refreshBookings])
+
+  useEffect(() => {
+    const onChanged = () => {
+      refreshBookings().catch(() => null)
+    }
+    window.addEventListener(BOOKINGS_CHANGED_EVENT, onChanged)
+    return () => window.removeEventListener(BOOKINGS_CHANGED_EVENT, onChanged)
+  }, [refreshBookings])
+
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null)
 
-  // session-from-booking state
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false)
   const [sessionBooking, setSessionBooking] = useState<Booking | null>(null)
 
-  const statusOptions: FilterOption<'all' | Booking['status']>[] = [
-    { value: 'all', label: 'All statuses (upcoming)' },
+  const statusOptions: FilterOption<StatusFilter>[] = [
+    { value: 'all', label: 'All statuses' },
     { value: 'confirmed', label: 'Confirmed' },
-    { value: 'pending', label: 'Pending' },
+    { value: 'in-progress', label: 'In progress' },
+    { value: 'completed', label: 'Completed' },
     { value: 'cancelled', label: 'Cancelled' },
-    { value: 'fulfilled', label: 'Fulfilled' },
-    { value: 'no-show', label: 'No show' },
+    { value: 'no-show', label: 'No-show' },
   ]
 
   useEffect(() => {
     setRightPanelContent(null)
   }, [setRightPanelContent])
 
-  const now = new Date()
+  useEffect(() => {
+    setUpcomingPage(1)
+    setPastPage(1)
+  }, [q, status])
 
-  // name map: patientId → display name
+  const now = new Date()
+  const todayStart = startOfDay(now)
+
   const names = useMemo(() => nameMap(PATIENTS), [])
 
-  // patient options for select field
   const patientOptions: PatientOption[] = useMemo(
     () =>
       PATIENTS.map(p => ({
@@ -100,8 +138,7 @@ export default function BookingsPage() {
     [],
   )
 
-  // Searching + grouping
-  const { todayBookings, upcomingBookings } = useMemo(() => {
+  const preparedBookings = useMemo(() => {
     const qn = q.trim().toLowerCase()
 
     const matchesQ = (b: Booking) =>
@@ -111,28 +148,49 @@ export default function BookingsPage() {
       b.serviceName.toLowerCase().includes(qn) ||
       (b.resource ?? '').toLowerCase().includes(qn)
 
-    const items = bookings
+    return bookings
+      .filter(matchesQ)
       .map(b => ({ ...b, startD: new Date(b.start), endD: new Date(b.end) }))
+  }, [bookings, names, q])
+
+  const todayFiltered = useMemo(() => {
+    return preparedBookings
+      .filter(b => isSameLocalDay(b.startD, now))
+      .filter(b => isVisibleInStatusFilter(b, status))
       .sort((a, b) => a.startD.getTime() - b.startD.getTime())
-
-    const today = items.filter(
-      b => isSameLocalDay(b.startD, now) && matchesQ(b),
-    )
-
-    const upcoming = items.filter(
-      b =>
-        !isSameLocalDay(b.startD, now) &&
-        b.startD >= startOfDay(now) &&
-        matchesQ(b),
-    )
-
-    return { todayBookings: today, upcomingBookings: upcoming }
-  }, [q, now, names, bookings])
+  }, [preparedBookings, now, status])
 
   const upcomingFiltered = useMemo(() => {
-    if (status === 'all') return upcomingBookings
-    return upcomingBookings.filter(b => b.status === status)
-  }, [upcomingBookings, status])
+    return preparedBookings
+      .filter(b => b.startD >= todayStart && !isSameLocalDay(b.startD, now))
+      .filter(b => isVisibleInStatusFilter(b, status))
+      .sort((a, b) => a.startD.getTime() - b.startD.getTime())
+  }, [preparedBookings, todayStart, now, status])
+
+  const pastFiltered = useMemo(() => {
+    return preparedBookings
+      .filter(b => b.startD < todayStart)
+      .filter(b => isVisibleInStatusFilter(b, status))
+      .sort((a, b) => b.startD.getTime() - a.startD.getTime())
+  }, [preparedBookings, status, todayStart])
+
+  const todayActive = useMemo(
+    () => todayFiltered.filter(b => !isResolved(b.status)),
+    [todayFiltered],
+  )
+  const todayResolved = useMemo(
+    () => todayFiltered.filter(b => isResolved(b.status)),
+    [todayFiltered],
+  )
+
+  const pagedUpcoming = useMemo(
+    () => upcomingFiltered.slice(0, upcomingPage * PAGE_SIZE),
+    [upcomingFiltered, upcomingPage],
+  )
+  const pagedPast = useMemo(
+    () => pastFiltered.slice(0, pastPage * PAGE_SIZE),
+    [pastFiltered, pastPage],
+  )
 
   function handleCreateSessionFromBooking(booking: Booking) {
     setSessionBooking(booking)
@@ -157,6 +215,14 @@ export default function BookingsPage() {
   async function handleSetStatus(b: Booking, next: Booking['status']) {
     const updated = await patchBooking(b.id, { status: next })
     setBookings(prev => prev.map(x => (x.id === updated.id ? updated : x)))
+    emitBookingsChanged()
+    return updated
+  }
+
+  async function handleStartVisit(b: Booking) {
+    const updated = await handleSetStatus(b, 'in-progress')
+    setSessionBooking(updated)
+    setSessionDialogOpen(true)
   }
 
   function handleViewBooking(b: Booking) {
@@ -186,17 +252,180 @@ export default function BookingsPage() {
 
   function handleBookingCreated(b: Booking) {
     setBookings(prev => [...prev, b])
+    emitBookingsChanged()
   }
 
   function handleBookingUpdated(b: Booking) {
     setBookings(prev =>
       prev.map(existing => (existing.id === b.id ? b : existing)),
     )
+    emitBookingsChanged()
+  }
+
+  function bookingExtras(b: Booking) {
+    const extras: { label: string; onSelect: () => void }[] = []
+
+    if (b.status === 'confirmed') {
+      const nowMs = Date.now()
+      const startMs = new Date(b.start).getTime()
+      const endMs = new Date(b.end).getTime()
+      if (startMs <= nowMs && endMs >= nowMs) {
+        extras.push({ label: 'Start visit', onSelect: () => void handleStartVisit(b) })
+      }
+    }
+
+    if (b.status === 'in-progress') {
+      if (!b.sessionId) {
+        extras.push({ label: 'Begin session note', onSelect: () => handleCreateSessionFromBooking(b) })
+      }
+      extras.push({ label: 'Complete visit', onSelect: () => void handleSetStatus(b, 'completed') })
+    }
+
+    if (b.status === 'completed' && !b.sessionId) {
+      extras.push({ label: 'Write session note', onSelect: () => handleCreateSessionFromBooking(b) })
+    }
+
+    return extras
+  }
+
+  function canSetOutcome(b: Booking) {
+    return b.status === 'confirmed'
+  }
+
+  function renderDesktopRows(items: BookingWithDates[], emptyLabel: string) {
+    return (
+      <div className="hidden md:block">
+        <TableFrame>
+          <TableEl className="table-fixed">
+            <THead>
+              <Tr>
+                <Th className="rounded-tl-md rounded-bl-md">Patient</Th>
+                <Th>Service</Th>
+                <Th>Resource</Th>
+                <Th>Start</Th>
+                <Th>Status</Th>
+                <Th className="text-right rounded-tr-md rounded-br-md">Actions</Th>
+              </Tr>
+            </THead>
+
+            <TBody>
+              {items.map(b => (
+                <Tr key={b.id}>
+                  <Td>{names.get(b.patientId) ?? 'Unknown'}</Td>
+
+                  <Td>
+                    <div className="font-medium text-ink">{b.serviceName}</div>
+                    <div className="text-xs text-ink/60">{b.serviceDurationMinutes} min</div>
+                  </Td>
+
+                  <Td className="text-ink/70">{b.resource ?? '—'}</Td>
+
+                  <Td className="text-ink/70">
+                    <div>{dt.format(new Date(b.start))}</div>
+                    <div className="text-xs text-ink/50">{timeFmt.format(new Date(b.start))}</div>
+                  </Td>
+
+                  <Td>
+                    <StatusBadge status={b.status} showText />
+                  </Td>
+
+                  <Td className="text-right">
+                    <BookingActionButtons
+                      onView={() => handleViewBooking(b)}
+                      onReschedule={() => handleEditBooking(b)}
+                      onCancel={canSetOutcome(b) ? () => handleSetStatus(b, 'cancelled') : undefined}
+                      onNoShow={canSetOutcome(b) ? () => handleSetStatus(b, 'no-show') : undefined}
+                      onDelete={() => console.log('delete booking', b.id)}
+                      extras={bookingExtras(b)}
+                    />
+                  </Td>
+                </Tr>
+              ))}
+
+              {items.length === 0 && (
+                <Tr>
+                  <Td className="text-center text-ink/60" colSpan={6}>
+                    {emptyLabel}
+                  </Td>
+                </Tr>
+              )}
+            </TBody>
+          </TableEl>
+        </TableFrame>
+      </div>
+    )
+  }
+
+  function renderMobileCards(items: BookingWithDates[], emptyLabel: string) {
+    return (
+      <div className="space-y-3 md:hidden">
+        {items.length === 0 && (
+          <div className="rounded-xl border border-brand-300/30 bg-surface p-4 text-center text-sm text-ink/60">
+            {emptyLabel}
+          </div>
+        )}
+
+        {items.map(b => (
+          <div
+            key={b.id}
+            className="rounded-xl border border-brand-300/40 bg-surface p-4 shadow-sm"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-base font-semibold text-ink">
+                  {names.get(b.patientId) ?? 'Unknown'}
+                </div>
+
+                <div className="text-sm text-ink/80">
+                  {b.serviceName} ({b.serviceDurationMinutes} min)
+                </div>
+
+                <div className="text-sm text-ink/70">{b.resource ?? '—'}</div>
+              </div>
+
+              <StatusBadge status={b.status} showText={false} />
+            </div>
+
+            <div className="mt-2 text-sm text-ink/70">
+              <div>{dt.format(new Date(b.start))}</div>
+              <div className="text-xs text-ink/60">{timeFmt.format(new Date(b.start))}</div>
+            </div>
+
+            {b.notes && <p className="mt-2 text-sm text-ink/60">{b.notes}</p>}
+
+            <div className="mt-3 flex justify-end">
+              <BookingActionButtons
+                onView={() => handleViewBooking(b)}
+                onReschedule={() => handleEditBooking(b)}
+                onCancel={canSetOutcome(b) ? () => handleSetStatus(b, 'cancelled') : undefined}
+                onNoShow={canSetOutcome(b) ? () => handleSetStatus(b, 'no-show') : undefined}
+                onDelete={() => console.log('delete booking', b.id)}
+                extras={bookingExtras(b)}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  function renderBookingList(items: BookingWithDates[], emptyLabel: string) {
+    return (
+      <>
+        {renderDesktopRows(items, emptyLabel)}
+        {renderMobileCards(items, emptyLabel)}
+      </>
+    )
+  }
+
+  const viewCounts = {
+    today: todayFiltered.length,
+    upcoming: upcomingFiltered.length,
+    past: pastFiltered.length,
   }
 
   return (
-    <div className="space-y-10">
-      {/* Header */}
+    <div className="space-y-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-semibold text-ink">Bookings</h1>
 
@@ -204,13 +433,7 @@ export default function BookingsPage() {
           <SearchField
             value={q}
             onChange={setQ}
-            placeholder="Search all bookings…"
-          />
-
-          <FilterSelect
-            value={status}
-            onChange={setStatus}
-            options={statusOptions}
+            placeholder="Search bookings…"
           />
 
           <button
@@ -223,270 +446,122 @@ export default function BookingsPage() {
         </div>
       </div>
 
-      {/* TODAY */}
-      <Collapsible title="Today" count={todayBookings.length} defaultOpen>
-        <div className="hidden md:block">
-          <TableFrame>
-            <TableEl className="table-fixed">
-              <THead>
-                <Tr>
-                  <Th className="rounded-tl-md rounded-bl-md">Patient</Th>
-                  <Th>Service</Th>
-                  <Th>Resource</Th>
-                  <Th>Start</Th>
-                  <Th>Status</Th>
-                  <Th className="text-right rounded-tr-md rounded-br-md">Actions</Th>
-                </Tr>
-              </THead>
-
-              <TBody>
-                {todayBookings.map(b => (
-                  <Tr key={b.id}>
-                    <Td>{names.get(b.patientId) ?? 'Unknown'}</Td>
-
-                    {/* Service Name + Duration */}
-                    <Td>
-                      <div className="font-medium text-ink">{b.serviceName}</div>
-                      <div className="text-xs text-ink/60">
-                        {b.serviceDurationMinutes} min
-                      </div>
-                    </Td>
-
-                    <Td className="text-ink/70">{b.resource ?? '—'}</Td>
-
-                    <Td className="text-ink/70">
-                      <div>{dt.format(new Date(b.start))}</div>
-                      <div className="text-xs text-ink/50">
-                        {timeFmt.format(new Date(b.start))}
-                      </div>
-                    </Td>
-
-                    <Td>
-                      <StatusBadge status={b.status} showText />
-                    </Td>
-
-                    <Td className="text-right">
-                      <BookingActionButtons
-                        onView={() => handleViewBooking(b)}
-                        onReschedule={() => handleEditBooking(b)}
-                        onCancel={() => handleSetStatus(b, 'cancelled')}
-                        onNoShow={() => handleSetStatus(b, 'no-show')}
-                        onDelete={() => console.log('delete booking', b.id)}
-                        extras={[
-                          {
-                            label: 'Create session',
-                            onSelect: () => handleCreateSessionFromBooking(b),
-                          },
-                        ]}
-                      />
-                    </Td>
-                  </Tr>
-                ))}
-
-                {todayBookings.length === 0 && (
-                  <Tr>
-                    <Td className="text-center text-ink/60" colSpan={6}>
-                      No bookings today.
-                    </Td>
-                  </Tr>
+      <div className="space-y-3">
+        <div className="inline-flex w-full flex-wrap gap-2 rounded-2xl border border-brand-300/30 bg-surface p-1.5 sm:w-auto">
+          {([
+            { value: 'today', label: 'Today' },
+            { value: 'upcoming', label: 'Upcoming' },
+            { value: 'past', label: 'Past' },
+          ] as const).map(tab => {
+            const active = view === tab.value
+            return (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setView(tab.value)}
+                className={cn(
+                  'rounded-xl px-4 py-2 text-sm font-medium transition',
+                  active
+                    ? 'bg-brand-700 text-white shadow-sm'
+                    : 'text-ink hover:bg-brand-300/10',
                 )}
-              </TBody>
-            </TableEl>
-          </TableFrame>
+              >
+                {tab.label}
+                <span className={cn('ml-2 rounded-full px-2 py-0.5 text-xs', active ? 'bg-white/15 text-white' : 'bg-brand-300/20 text-ink/70')}>
+                  {viewCounts[tab.value]}
+                </span>
+              </button>
+            )
+          })}
         </div>
 
-        {/* Mobile Cards */}
-        <div className="space-y-3 md:hidden">
-          {todayBookings.length === 0 && (
-            <div className="rounded-xl border border-brand-300/30 bg-surface p-4 text-center text-sm text-ink/60">
-              No bookings today.
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-ink">Status</p>
+            <p className="text-xs text-ink/60">Filter the current booking view by status.</p>
+          </div>
+          <FilterSelect
+            value={status}
+            onChange={setStatus}
+            options={statusOptions}
+            className="sm:w-52"
+          />
+        </div>
+      </div>
+
+      {view === 'today' && (
+        <div className="space-y-6">
+          <section className="space-y-3">
+            <div>
+              <h2 className="text-lg font-semibold text-ink">Today</h2>
+            </div>
+            {renderBookingList(
+              status === 'all' ? todayActive : todayFiltered,
+              status === 'all' ? 'No active bookings today.' : 'No bookings match this status today.',
+            )}
+          </section>
+
+          {status === 'all' && (
+            <section className="space-y-3">
+              <div>
+                <h3 className="text-base font-semibold text-ink">Resolved today</h3>
+              </div>
+              {renderBookingList(todayResolved, 'No resolved bookings today yet.')}
+            </section>
+          )}
+        </div>
+      )}
+
+      {view === 'upcoming' && (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Upcoming</h2>
+            <p className="text-sm text-ink/60">
+              Future bookings are paginated so the practitioner sees the nearest appointments first.
+            </p>
+          </div>
+
+          {renderBookingList(pagedUpcoming, 'No upcoming bookings found.')}
+
+          {upcomingFiltered.length > pagedUpcoming.length && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => setUpcomingPage(prev => prev + 1)}
+                className="rounded-lg border border-brand-300/40 bg-surface px-4 py-2 text-sm font-medium text-ink hover:bg-brand-300/10"
+              >
+                Load 10 more
+              </button>
             </div>
           )}
-
-          {todayBookings.map(b => (
-            <div
-              key={b.id}
-              className="rounded-xl border border-brand-300/40 bg-surface p-4 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-base font-semibold text-ink">
-                    {names.get(b.patientId) ?? 'Unknown'}
-                  </div>
-
-                  <div className="text-sm text-ink/80">
-                    {b.serviceName} ({b.serviceDurationMinutes} min)
-                  </div>
-
-                  <div className="text-sm text-ink/70">{b.resource ?? '—'}</div>
-                </div>
-
-                <StatusBadge status={b.status} showText={false} />
-              </div>
-
-              <div className="mt-2 text-sm text-ink/70">
-                <div>Start: {dt.format(new Date(b.start))}</div>
-                <div className="text-xs text-ink/60">
-                  {timeFmt.format(new Date(b.start))}
-                </div>
-              </div>
-
-              {b.notes && (
-                <p className="mt-2 text-sm text-ink/60">{b.notes}</p>
-              )}
-
-              <div className="mt-3 flex justify-end">
-                <BookingActionButtons
-                  onView={() => handleViewBooking(b)}
-                  onReschedule={() => handleEditBooking(b)}
-                  onCancel={() => handleSetStatus(b, 'cancelled')}
-                  onNoShow={() => handleSetStatus(b, 'no-show')}
-                  onDelete={() => console.log('delete booking', b.id)}
-                  extras={[
-                          {
-                            label: 'Create session',
-                            onSelect: () => handleCreateSessionFromBooking(b),
-                          },
-                        ]}
-                />
-              </div>
-            </div>
-          ))}
         </div>
-      </Collapsible>
+      )}
 
-      {/* UPCOMING */}
-      <Collapsible title="Upcoming" count={upcomingFiltered.length} defaultOpen>
-        <div className="hidden md:block">
-          <TableFrame>
-            <TableEl className="table-fixed">
-              <THead>
-                <Tr>
-                  <Th className="rounded-tl-md rounded-bl-md">Patient</Th>
-                  <Th>Service</Th>
-                  <Th>Resource</Th>
-                  <Th>Start</Th>
-                  <Th>Status</Th>
-                  <Th className="text-right rounded-tr-md rounded-br-md">Actions</Th>
-                </Tr>
-              </THead>
+      {view === 'past' && (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Past</h2>
+            <p className="text-sm text-ink/60">
+              Historical bookings stay in one place so practitioners can review and correct older records when needed.
+            </p>
+          </div>
 
-              <TBody>
-                {upcomingFiltered.map(b => (
-                  <Tr key={b.id}>
-                    <Td>{names.get(b.patientId) ?? 'Unknown'}</Td>
+          {renderBookingList(pagedPast, 'No past bookings found.')}
 
-                    <Td>
-                      <div className="font-medium text-ink">{b.serviceName}</div>
-                      <div className="text-xs text-ink/60">
-                        {b.serviceDurationMinutes} min
-                      </div>
-                    </Td>
-
-                    <Td className="text-ink/70">{b.resource ?? '—'}</Td>
-
-                    <Td className="text-ink/70">
-                      <div>{dt.format(new Date(b.start))}</div>
-                      <div className="text-xs text-ink/50">
-                        {timeFmt.format(new Date(b.start))}
-                      </div>
-                    </Td>
-
-                    <Td>
-                      <StatusBadge status={b.status} showText />
-                    </Td>
-
-                    <Td className="text-right">
-                      <BookingActionButtons
-                        onView={() => handleViewBooking(b)}
-                        onReschedule={() => handleEditBooking(b)}
-                        onCancel={() => handleSetStatus(b, 'cancelled')}
-                        onNoShow={() => handleSetStatus(b, 'no-show')}
-                        onDelete={() => console.log('delete booking', b.id)}
-                        extras={[
-                          {
-                            label: 'Create session',
-                            onSelect: () => handleCreateSessionFromBooking(b),
-                          },
-                        ]}
-                      />
-                    </Td>
-                  </Tr>
-                ))}
-
-                {upcomingFiltered.length === 0 && (
-                  <Tr>
-                    <Td className="text-center text-ink/60" colSpan={6}>
-                      No upcoming bookings found.
-                    </Td>
-                  </Tr>
-                )}
-              </TBody>
-            </TableEl>
-          </TableFrame>
-        </div>
-
-        {/* Mobile Cards */}
-        <div className="space-y-3 md:hidden">
-          {upcomingFiltered.length === 0 && (
-            <div className="rounded-xl border border-brand-300/30 bg-surface p-4 text-center text-sm text-ink/60">
-              No upcoming bookings found.
+          {pastFiltered.length > pagedPast.length && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => setPastPage(prev => prev + 1)}
+                className="rounded-lg border border-brand-300/40 bg-surface px-4 py-2 text-sm font-medium text-ink hover:bg-brand-300/10"
+              >
+                Load 10 more
+              </button>
             </div>
           )}
-
-          {upcomingFiltered.map(b => (
-            <div
-              key={b.id}
-              className="rounded-xl border border-brand-300/40 bg-surface p-4 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-base font-semibold text-ink">
-                    {names.get(b.patientId) ?? 'Unknown'}
-                  </div>
-
-                  <div className="text-sm text-ink/80">
-                    {b.serviceName} ({b.serviceDurationMinutes} min)
-                  </div>
-
-                  <div className="text-sm text-ink/70">{b.resource ?? '—'}</div>
-                </div>
-
-                <StatusBadge status={b.status} showText={false} />
-              </div>
-
-              <div className="mt-2 text-sm text-ink/70">
-                <div>{dt.format(new Date(b.start))}</div>
-                <div className="text-xs text-ink/60">
-                  {timeFmt.format(new Date(b.start))}
-                </div>
-              </div>
-
-              {b.notes && (
-                <p className="mt-2 text-sm text-ink/60">{b.notes}</p>
-              )}
-
-              <div className="mt-3 flex justify-end">
-                <BookingActionButtons
-                  onView={() => handleViewBooking(b)}
-                  onReschedule={() => handleEditBooking(b)}
-                  onCancel={() => handleSetStatus(b, 'cancelled')}
-                  onNoShow={() => handleSetStatus(b, 'no-show')}
-                  onDelete={() => console.log('delete booking', b.id)}
-                  extras={[
-                          {
-                            label: 'Create session',
-                            onSelect: () => handleCreateSessionFromBooking(b),
-                          },
-                        ]}
-                />
-              </div>
-            </div>
-          ))}
         </div>
-      </Collapsible>
+      )}
 
-      {/* dialog */}
       <BookingDialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
@@ -505,9 +580,7 @@ export default function BookingsPage() {
         }}
         mode="create"
         patientId={sessionBooking?.patientId}
-        patientName={
-          sessionBooking ? names.get(sessionBooking.patientId) ?? undefined : undefined
-        }
+        patientName={sessionBooking ? names.get(sessionBooking.patientId) ?? undefined : undefined}
         bookingContext={
           sessionBooking
             ? {
@@ -518,19 +591,13 @@ export default function BookingsPage() {
             : undefined
         }
         onCreated={() => {
-          // Close after successful creation; refresh bookings so sessionId/status are reflected
-          fetch('/api/bookings', { cache: 'no-store' })
-            .then(r => (r.ok ? r.json() : null))
-            .then((items: Booking[] | null) => {
-              if (items) setBookings(items)
-            })
-            .catch(() => null)
+          refreshBookings().catch(() => null)
+          emitBookingsChanged()
 
           setSessionDialogOpen(false)
           setSessionBooking(null)
         }}
       />
     </div>
-    
   )
 }

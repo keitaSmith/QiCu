@@ -66,8 +66,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const booking = BOOKINGS.find(b => b.id === bookingId)
     if (booking) {
       booking.sessionId = newSession.id
-      // Creating a session implies the treatment happened.
-      if (booking.status !== 'fulfilled') booking.status = 'fulfilled'
+      // Linking a note means the visit has started unless it was already completed.
+      if (booking.status === 'confirmed') booking.status = 'in-progress'
     }
   }
 

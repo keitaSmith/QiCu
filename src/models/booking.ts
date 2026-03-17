@@ -3,8 +3,9 @@
 export type BookingStatus =
   | 'confirmed'
   | 'pending'
+  | 'in-progress'
   | 'cancelled'
-  | 'fulfilled'
+  | 'completed'
   | 'no-show'
 
 export type Booking = {

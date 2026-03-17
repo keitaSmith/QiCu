@@ -41,6 +41,7 @@ import { SessionDialog } from '@/components/sessions/SessionDialog'
 import { PATIENTS } from '@/data/patients'
 import type { Booking } from '@/models/booking'
 import { nameMap } from '@/lib/patients/selectors'
+import { emitBookingsChanged } from '@/lib/booking-events'
 
 const navigation = [
   { name: 'Patients', href: '/dashboard/patients', icon: UserGroupIcon },
@@ -430,6 +431,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             : undefined
         }
         onCreated={() => {
+          emitBookingsChanged()
           setTaskSessionOpen(false)
           setTaskBooking(null)
         }}

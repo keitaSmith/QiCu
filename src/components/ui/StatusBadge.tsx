@@ -13,18 +13,22 @@ type AnyStatus = Booking['status'] | PatientStatus
 // outer wrapper uses text-* for the dot and bg-*/10 for the halo
 const COLORS: Record<AnyStatus, string> = {
   // Booking statuses (unchanged)
-  fulfilled: 'text-emerald-600 bg-emerald-600/10', // ✅ completed = green
+  completed: 'text-emerald-600 bg-emerald-600/10',
   confirmed: 'text-brand-700 bg-brand-700/10',
   pending:   'text-amber-600 bg-amber-600/10',
+  'in-progress': 'text-sky-700 bg-sky-700/10',
   cancelled: 'text-rose-600 bg-rose-600/10',
   'no-show': 'text-slate-600 bg-slate-400/20',
 
   // Patient statuses (new → mapped to existing palette)
-  active:   'text-emerald-600 bg-emerald-600/10', // same as fulfilled (green)
+  active:   'text-emerald-600 bg-emerald-600/10',
   inactive: 'text-rose-600 bg-rose-600/10',       // same as cancelled (red)
 }
 
 function pretty(status: AnyStatus) {
+  if (status === 'completed') return 'Completed'
+  if (status === 'in-progress') return 'In progress'
+  if (status === 'no-show') return 'No-show'
   return status.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 

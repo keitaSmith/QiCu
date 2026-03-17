@@ -1,33 +1,29 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import {
-  Menu,
-  MenuButton,
-  MenuItem,
-  MenuItems,
-} from '@headlessui/react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import {
   ClipboardDocumentCheckIcon,
   CheckCircleIcon,
-  XCircleIcon,
+  PlayCircleIcon,
   UserMinusIcon,
+  XCircleIcon,
 } from '@heroicons/react/24/outline'
 
 import type { Booking } from '@/models/booking'
 import { dateFmt as dt, timeFmt } from '@/lib/dates'
 import { cn } from '@/lib/cn'
+import { BOOKINGS_CHANGED_EVENT, emitBookingsChanged } from '@/lib/booking-events'
+
+type TaskKind = 'ready-to-start' | 'needs-status' | 'begin-note' | 'write-note' | 'finish-visit'
 
 type TaskBooking = {
   booking: Booking
-  kind: 'needs-status' | 'needs-note'
+  kind: TaskKind
 }
 
 type Props = {
-  /** Map booking.patientId -> display name (already available in layout) */
   patientNameForId: (patientId: string) => string
-
-  /** Open the create-session dialog pre-linked to this booking */
   onCreateSession: (booking: Booking) => void
 }
 
@@ -38,18 +34,51 @@ async function fetchBookings(): Promise<Booking[]> {
 }
 
 async function patchBookingStatus(bookingId: string, status: Booking['status']) {
-  const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}`,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    },
-  )
+  const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  })
   if (!res.ok) {
     const data = await res.json().catch(() => null)
     throw new Error(data?.error ?? 'Failed to update booking')
   }
   return res.json() as Promise<Booking>
+}
+
+function taskMeta(kind: TaskKind) {
+  switch (kind) {
+    case 'ready-to-start':
+      return {
+        title: 'Ready to start visit',
+        badge: 'Visit',
+        tone: 'bg-emerald-100 text-emerald-800',
+      }
+    case 'needs-status':
+      return {
+        title: 'Set outcome',
+        badge: 'Outcome',
+        tone: 'bg-amber-100 text-amber-800',
+      }
+    case 'begin-note':
+      return {
+        title: 'Begin session note',
+        badge: 'Note',
+        tone: 'bg-sky-100 text-sky-800',
+      }
+    case 'finish-visit':
+      return {
+        title: 'Complete visit',
+        badge: 'Visit',
+        tone: 'bg-emerald-100 text-emerald-800',
+      }
+    default:
+      return {
+        title: 'Write session note',
+        badge: 'Note',
+        tone: 'bg-blue-100 text-blue-800',
+      }
+  }
 }
 
 export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
@@ -58,53 +87,73 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  // Load when dropdown opens (keeps it accurate without heavy polling)
+  const loadBookings = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const items = await fetchBookings()
+      setBookings(items)
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to load tasks')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadBookings()
+  }, [loadBookings])
+
   useEffect(() => {
     if (!open) return
-    let alive = true
-    ;(async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        const items = await fetchBookings()
-        if (!alive) return
-        setBookings(items)
-      } catch (e: any) {
-        if (!alive) return
-        setError(e?.message ?? 'Failed to load tasks')
-      } finally {
-        if (!alive) return
-        setLoading(false)
-      }
-    })()
-    return () => {
-      alive = false
+    loadBookings()
+  }, [open, loadBookings])
+
+  useEffect(() => {
+    const onChanged = () => {
+      loadBookings().catch(() => null)
     }
-  }, [open])
+    window.addEventListener(BOOKINGS_CHANGED_EVENT, onChanged)
+    return () => window.removeEventListener(BOOKINGS_CHANGED_EVENT, onChanged)
+  }, [loadBookings])
 
   const tasks = useMemo(() => {
     const now = new Date()
     const items: TaskBooking[] = []
 
     for (const b of bookings) {
+      const start = new Date(b.start)
       const end = new Date(b.end)
+      const hasStarted = !Number.isNaN(start.getTime()) && start.getTime() <= now.getTime()
       const isPast = !Number.isNaN(end.getTime()) && end.getTime() < now.getTime()
-      const preOutcome = b.status === 'pending' || b.status === 'confirmed'
+      const isCurrent = hasStarted && !isPast
 
-      if (isPast && preOutcome) {
+      if (b.status === 'confirmed' && isCurrent) {
+        items.push({ booking: b, kind: 'ready-to-start' })
+        continue
+      }
+
+      if (b.status === 'confirmed' && isPast) {
         items.push({ booking: b, kind: 'needs-status' })
         continue
       }
 
-      if (b.status === 'fulfilled' && !b.sessionId) {
-        items.push({ booking: b, kind: 'needs-note' })
+      if (b.status === 'in-progress' && !b.sessionId) {
+        items.push({ booking: b, kind: 'begin-note' })
+        continue
+      }
+
+      if (b.status === 'in-progress' && b.sessionId && isPast) {
+        items.push({ booking: b, kind: 'finish-visit' })
+        continue
+      }
+
+      if (b.status === 'completed' && !b.sessionId) {
+        items.push({ booking: b, kind: 'write-note' })
       }
     }
 
-    // Sort oldest first so the practitioner clears backlog in order
-    items.sort(
-      (a, c) => new Date(a.booking.start).getTime() - new Date(c.booking.start).getTime(),
-    )
+    items.sort((a, c) => new Date(a.booking.start).getTime() - new Date(c.booking.start).getTime())
     return items
   }, [bookings])
 
@@ -115,9 +164,17 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
       setError(null)
       const updated = await patchBookingStatus(booking.id, status)
       setBookings(prev => prev.map(b => (b.id === updated.id ? updated : b)))
+      emitBookingsChanged()
+      return updated
     } catch (e: any) {
       setError(e?.message ?? 'Failed to update booking')
+      return null
     }
+  }
+
+  async function handleStartVisit(booking: Booking) {
+    const updated = await setStatus(booking, 'in-progress')
+    if (updated) onCreateSession(updated)
   }
 
   return (
@@ -141,10 +198,7 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
         className="absolute right-0 z-50 mt-2.5 w-[26rem] origin-top-right rounded-2xl bg-surface p-2 shadow-lg ring-1 ring-ink/10 transition data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in"
       >
         <div className="flex items-center justify-between px-2 py-2">
-          <div>
-            <p className="text-sm font-semibold text-ink">Tasks</p>
-            <p className="text-xs text-ink/60">Things that still need action</p>
-          </div>
+          <p className="text-sm font-semibold text-ink">Tasks</p>
           <span className="rounded-full bg-brand-300/20 px-2 py-1 text-xs font-semibold text-brand-800">
             {badgeCount}
           </span>
@@ -156,14 +210,10 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
           </div>
         )}
 
-        {loading && (
-          <div className="px-3 py-4 text-sm text-ink/60">Loading…</div>
-        )}
+        {loading && <div className="px-3 py-4 text-sm text-ink/60">Loading…</div>}
 
         {!loading && tasks.length === 0 && (
-          <div className="px-3 py-6 text-center text-sm text-ink/60">
-            No tasks right now.
-          </div>
+          <div className="px-3 py-6 text-center text-sm text-ink/60">No tasks right now.</div>
         )}
 
         <div className="max-h-[26rem] overflow-y-auto">
@@ -171,12 +221,7 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
             const b = t.booking
             const start = new Date(b.start)
             const patientName = patientNameForId(b.patientId)
-
-            const title =
-              t.kind === 'needs-status'
-                ? 'Set outcome'
-                : 'Write session note'
-
+            const meta = taskMeta(t.kind)
             const subtitle = `${patientName} · ${dt.format(start)} · ${timeFmt.format(start)}`
 
             return (
@@ -186,39 +231,52 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-ink">{title}</p>
+                    <p className="text-sm font-semibold text-ink">{meta.title}</p>
                     <p className="mt-0.5 truncate text-xs text-ink/60">{subtitle}</p>
                     <p className="mt-1 truncate text-xs text-ink/70">
                       {b.serviceName} · {b.code}
                     </p>
                   </div>
-                  <span
-                    className={cn(
-                      'shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold',
-                      t.kind === 'needs-status'
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-blue-100 text-blue-800',
-                    )}
-                  >
-                    {t.kind === 'needs-status' ? 'Outcome' : 'Note'}
+                  <span className={cn('shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold', meta.tone)}>
+                    {meta.badge}
                   </span>
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
-                  {t.kind === 'needs-status' ? (
+                  {t.kind === 'ready-to-start' && (
+                    <MenuItem>
+                      {({ focus }) => (
+                        <button
+                          type="button"
+                          onClick={() => handleStartVisit(b)}
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded-lg bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-600',
+                            focus && 'outline-none ring-2 ring-brand-600',
+                          )}
+                        >
+                          <PlayCircleIcon className="size-4" />
+                          Start visit
+                        </button>
+                      )}
+                    </MenuItem>
+                  )}
+
+                  {t.kind === 'needs-status' && (
                     <>
                       <MenuItem>
                         {({ focus }) => (
                           <button
                             type="button"
-                            onClick={() => setStatus(b, 'fulfilled')}
+                            onClick={() => {
+                              if (window.confirm('Mark this booking as completed?')) setStatus(b, 'completed')
+                            }}
                             className={cn(
                               'inline-flex items-center gap-1 rounded-lg bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-600',
                               focus && 'outline-none ring-2 ring-brand-600',
                             )}
                           >
                             <CheckCircleIcon className="size-4" />
-                            Fulfilled
+                            Completed
                           </button>
                         )}
                       </MenuItem>
@@ -226,7 +284,9 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
                         {({ focus }) => (
                           <button
                             type="button"
-                            onClick={() => setStatus(b, 'no-show')}
+                            onClick={() => {
+                              if (window.confirm('Mark this booking as no-show?')) setStatus(b, 'no-show')
+                            }}
                             className={cn(
                               'inline-flex items-center gap-1 rounded-lg border border-brand-300/50 bg-surface px-3 py-1.5 text-xs font-semibold text-ink hover:bg-brand-300/10',
                               focus && 'outline-none ring-2 ring-brand-600',
@@ -241,7 +301,9 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
                         {({ focus }) => (
                           <button
                             type="button"
-                            onClick={() => setStatus(b, 'cancelled')}
+                            onClick={() => {
+                              if (window.confirm('Mark this booking as cancelled?')) setStatus(b, 'cancelled')
+                            }}
                             className={cn(
                               'inline-flex items-center gap-1 rounded-lg border border-brand-300/50 bg-surface px-3 py-1.5 text-xs font-semibold text-ink hover:bg-brand-300/10',
                               focus && 'outline-none ring-2 ring-brand-600',
@@ -253,7 +315,27 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
                         )}
                       </MenuItem>
                     </>
-                  ) : (
+                  )}
+
+                  {t.kind === 'finish-visit' && (
+                    <MenuItem>
+                      {({ focus }) => (
+                        <button
+                          type="button"
+                          onClick={() => void setStatus(b, 'completed')}
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded-lg bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-600',
+                            focus && 'outline-none ring-2 ring-brand-600',
+                          )}
+                        >
+                          <CheckCircleIcon className="size-4" />
+                          Complete visit
+                        </button>
+                      )}
+                    </MenuItem>
+                  )}
+
+                  {(t.kind === 'begin-note' || t.kind === 'write-note') && (
                     <MenuItem>
                       {({ focus }) => (
                         <button
@@ -265,7 +347,7 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
                           )}
                         >
                           <ClipboardDocumentCheckIcon className="size-4" />
-                          Create note
+                          {t.kind === 'begin-note' ? 'Begin note' : 'Write note'}
                         </button>
                       )}
                     </MenuItem>
