@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import {
   ClipboardDocumentCheckIcon,
@@ -13,37 +13,13 @@ import {
 import type { Booking } from '@/models/booking'
 import { dateFmt as dt, timeFmt } from '@/lib/dates'
 import { cn } from '@/lib/cn'
-import { BOOKINGS_CHANGED_EVENT, emitBookingsChanged } from '@/lib/booking-events'
-
-type TaskKind = 'ready-to-start' | 'needs-status' | 'begin-note' | 'write-note' | 'finish-visit'
-
-type TaskBooking = {
-  booking: Booking
-  kind: TaskKind
-}
+import { useTasks, type TaskKind } from '@/hooks/useTasks'
+import { useBookings } from '@/hooks/useBookings'
+import { TaskSkeleton } from '@/components/tasks/TaskSkeleton'
 
 type Props = {
   patientNameForId: (patientId: string) => string
   onCreateSession: (booking: Booking) => void
-}
-
-async function fetchBookings(): Promise<Booking[]> {
-  const res = await fetch('/api/bookings', { cache: 'no-store' })
-  if (!res.ok) throw new Error('Failed to load bookings')
-  return res.json()
-}
-
-async function patchBookingStatus(bookingId: string, status: Booking['status']) {
-  const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
-  })
-  if (!res.ok) {
-    const data = await res.json().catch(() => null)
-    throw new Error(data?.error ?? 'Failed to update booking')
-  }
-  return res.json() as Promise<Booking>
 }
 
 function taskMeta(kind: TaskKind) {
@@ -83,93 +59,14 @@ function taskMeta(kind: TaskKind) {
 
 export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
   const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [bookings, setBookings] = useState<Booking[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const { bookings, loading, error, refresh, updateBookingStatus } = useBookings()
 
-  const loadBookings = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const items = await fetchBookings()
-      setBookings(items)
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to load tasks')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadBookings()
-  }, [loadBookings])
-
-  useEffect(() => {
-    if (!open) return
-    loadBookings()
-  }, [open, loadBookings])
-
-  useEffect(() => {
-    const onChanged = () => {
-      loadBookings().catch(() => null)
-    }
-    window.addEventListener(BOOKINGS_CHANGED_EVENT, onChanged)
-    return () => window.removeEventListener(BOOKINGS_CHANGED_EVENT, onChanged)
-  }, [loadBookings])
-
-  const tasks = useMemo(() => {
-    const now = new Date()
-    const items: TaskBooking[] = []
-
-    for (const b of bookings) {
-      const start = new Date(b.start)
-      const end = new Date(b.end)
-      const hasStarted = !Number.isNaN(start.getTime()) && start.getTime() <= now.getTime()
-      const isPast = !Number.isNaN(end.getTime()) && end.getTime() < now.getTime()
-      const isCurrent = hasStarted && !isPast
-
-      if (b.status === 'confirmed' && isCurrent) {
-        items.push({ booking: b, kind: 'ready-to-start' })
-        continue
-      }
-
-      if (b.status === 'confirmed' && isPast) {
-        items.push({ booking: b, kind: 'needs-status' })
-        continue
-      }
-
-      if (b.status === 'in-progress' && !b.sessionId) {
-        items.push({ booking: b, kind: 'begin-note' })
-        continue
-      }
-
-      if (b.status === 'in-progress' && b.sessionId && isPast) {
-        items.push({ booking: b, kind: 'finish-visit' })
-        continue
-      }
-
-      if (b.status === 'completed' && !b.sessionId) {
-        items.push({ booking: b, kind: 'write-note' })
-      }
-    }
-
-    items.sort((a, c) => new Date(a.booking.start).getTime() - new Date(c.booking.start).getTime())
-    return items
-  }, [bookings])
+  const tasks = useTasks(bookings)
 
   const badgeCount = tasks.length
 
   async function setStatus(booking: Booking, status: Booking['status']) {
-    try {
-      setError(null)
-      const updated = await patchBookingStatus(booking.id, status)
-      setBookings(prev => prev.map(b => (b.id === updated.id ? updated : b)))
-      emitBookingsChanged()
-      return updated
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to update booking')
-      return null
-    }
+    return updateBookingStatus(booking.id, status)
   }
 
   async function handleStartVisit(booking: Booking) {
@@ -180,7 +77,10 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
   return (
     <Menu as="div" className="relative">
       <MenuButton
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setOpen(true)
+          refresh().catch(() => null)
+        }}
         onBlur={() => setOpen(false)}
         className="relative -m-2.5 rounded-md p-2.5 text-ink/60 hover:bg-brand-300/10 hover:text-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-600"
       >
@@ -210,7 +110,7 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
           </div>
         )}
 
-        {loading && <div className="px-3 py-4 text-sm text-ink/60">Loading…</div>}
+        {loading && <TaskSkeleton items={3} />}
 
         {!loading && tasks.length === 0 && (
           <div className="px-3 py-6 text-center text-sm text-ink/60">No tasks right now.</div>

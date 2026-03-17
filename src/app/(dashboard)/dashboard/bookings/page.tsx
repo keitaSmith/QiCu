@@ -6,7 +6,6 @@ import { useMemo, useState, useEffect } from 'react'
 import { SearchField } from '@/components/ui/SearchField'
 import { FilterSelect, type FilterOption } from '@/components/ui/FilterSelect'
 
-import { BOOKINGS } from '@/data/bookings'
 import { PATIENTS } from '@/data/patients'
 import type { Booking } from '@/models/booking'
 import { dateFmt as dt, timeFmt, isSameLocalDay, startOfDay } from '@/lib/dates'
@@ -32,7 +31,10 @@ import { BookingDialog } from '@/components/bookings/BookingDialog'
 import { useRouter } from 'next/navigation'
 import { useIsDesktop } from '@/lib/useIsDesktop'
 import { cn } from '@/lib/cn'
-import { BOOKINGS_CHANGED_EVENT, emitBookingsChanged } from '@/lib/booking-events'
+import { emitBookingsChanged } from '@/lib/booking-events'
+import { useBookings } from '@/hooks/useBookings'
+import { TableSkeleton } from '@/components/ui/TableSkeleton'
+import { CardListSkeleton } from '@/components/ui/CardListSkeleton'
 
 type PatientOption = { id: string; name: string }
 type ViewMode = 'today' | 'upcoming' | 'past'
@@ -42,18 +44,6 @@ type BookingWithDates = Booking & { startD: Date; endD: Date }
 
 const PAGE_SIZE = 10
 
-function statusLabel(status: Booking['status']) {
-  switch (status) {
-    case 'completed':
-      return 'Completed'
-    case 'in-progress':
-      return 'In progress'
-    case 'no-show':
-      return 'No-show'
-    default:
-      return status.replace(/\b\w/g, c => c.toUpperCase())
-  }
-}
 
 function isResolved(status: Booking['status']) {
   return status === 'completed' || status === 'cancelled' || status === 'no-show'
@@ -74,30 +64,15 @@ export default function BookingsPage() {
   const router = useRouter()
   const isDesktop = useIsDesktop()
 
-  const [bookings, setBookings] = useState<Booking[]>(BOOKINGS)
-
-  const refreshBookings = useMemo(() => async () => {
-    try {
-      const res = await fetch('/api/bookings', { cache: 'no-store' })
-      if (!res.ok) return
-      const items: Booking[] = await res.json()
-      setBookings(items)
-    } catch {
-      // fallback to seeded BOOKINGS
-    }
-  }, [])
-
-  useEffect(() => {
-    refreshBookings()
-  }, [refreshBookings])
-
-  useEffect(() => {
-    const onChanged = () => {
-      refreshBookings().catch(() => null)
-    }
-    window.addEventListener(BOOKINGS_CHANGED_EVENT, onChanged)
-    return () => window.removeEventListener(BOOKINGS_CHANGED_EVENT, onChanged)
-  }, [refreshBookings])
+  const {
+    bookings,
+    prependBooking,
+    replaceBooking,
+    refresh: refreshBookings,
+    updateBookingStatus,
+    loading,
+    error,
+  } = useBookings()
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
@@ -197,25 +172,9 @@ export default function BookingsPage() {
     setSessionDialogOpen(true)
   }
 
-  async function patchBooking(id: string, patch: Partial<Booking>) {
-    const res = await fetch(`/api/bookings/${encodeURIComponent(id)}`,
-      {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch),
-      },
-    )
-    if (!res.ok) {
-      const data = await res.json().catch(() => null)
-      throw new Error(data?.error ?? 'Failed to update booking')
-    }
-    return (await res.json()) as Booking
-  }
-
   async function handleSetStatus(b: Booking, next: Booking['status']) {
-    const updated = await patchBooking(b.id, { status: next })
-    setBookings(prev => prev.map(x => (x.id === updated.id ? updated : x)))
-    emitBookingsChanged()
+    const updated = await updateBookingStatus(b.id, next)
+    if (!updated) return b
     return updated
   }
 
@@ -251,14 +210,12 @@ export default function BookingsPage() {
   }
 
   function handleBookingCreated(b: Booking) {
-    setBookings(prev => [...prev, b])
+    prependBooking(b)
     emitBookingsChanged()
   }
 
   function handleBookingUpdated(b: Booking) {
-    setBookings(prev =>
-      prev.map(existing => (existing.id === b.id ? b : existing)),
-    )
+    replaceBooking(b)
     emitBookingsChanged()
   }
 
@@ -309,7 +266,9 @@ export default function BookingsPage() {
             </THead>
 
             <TBody>
-              {items.map(b => (
+              {loading && <TableSkeleton rows={3} columns={6} />}
+
+              {!loading && items.map(b => (
                 <Tr key={b.id}>
                   <Td>{names.get(b.patientId) ?? 'Unknown'}</Td>
 
@@ -342,7 +301,7 @@ export default function BookingsPage() {
                 </Tr>
               ))}
 
-              {items.length === 0 && (
+              {!loading && items.length === 0 && (
                 <Tr>
                   <Td className="text-center text-ink/60" colSpan={6}>
                     {emptyLabel}
@@ -359,13 +318,15 @@ export default function BookingsPage() {
   function renderMobileCards(items: BookingWithDates[], emptyLabel: string) {
     return (
       <div className="space-y-3 md:hidden">
-        {items.length === 0 && (
+        {!loading && items.length === 0 && (
           <div className="rounded-xl border border-brand-300/30 bg-surface p-4 text-center text-sm text-ink/60">
             {emptyLabel}
           </div>
         )}
 
-        {items.map(b => (
+        {loading && <CardListSkeleton items={4} lines={3} />}
+
+              {!loading && items.map(b => (
           <div
             key={b.id}
             className="rounded-xl border border-brand-300/40 bg-surface p-4 shadow-sm"
@@ -375,6 +336,12 @@ export default function BookingsPage() {
                 <div className="text-base font-semibold text-ink">
                   {names.get(b.patientId) ?? 'Unknown'}
                 </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
                 <div className="text-sm text-ink/80">
                   {b.serviceName} ({b.serviceDurationMinutes} min)

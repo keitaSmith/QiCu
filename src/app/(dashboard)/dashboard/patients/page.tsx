@@ -6,8 +6,6 @@ import { PatientDetailPanel } from '@/components/patients/PatientDetailPanel'
 import { FunnelIcon } from '@heroicons/react/24/outline'
 import { SearchField } from '@/components/ui/SearchField'
 
-import { PATIENTS } from '@/data/patients'
-import { BOOKINGS } from '@/data/bookings'
 import type { FhirPatient } from '@/models/patient'
 import * as Patient from '@/models/patient'
 import { exportPatientPdf, exportPatientsCsv } from '@/lib/export/patients'
@@ -22,9 +20,13 @@ import { isSameLocalDay, startOfDay } from '@/lib/dates'
 import { TableFrame, TableEl, THead, TBody, Tr, Th, Td } from '@/components/ui/QiCuTable'
 import { PatientsActionButtons } from '@/components/ui/RowActions'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { TableSkeleton } from '@/components/ui/TableSkeleton'
+import { CardListSkeleton } from '@/components/ui/CardListSkeleton'
 
 import { useRouter } from 'next/navigation'
 import { useIsDesktop } from '@/lib/useIsDesktop'
+import { usePatients } from '@/hooks/usePatients'
+import { useBookings } from '@/hooks/useBookings'
 
 // Toggle this to inspect what's detected as "today"
 const DEBUG_TODAY = false
@@ -51,8 +53,8 @@ export default function PatientsPage() {
     setRightPanelContent(null)
   }, [setRightPanelContent])
 
-  // Local working list (starts from seeds)
-  const [patients, setPatients] = useState<FhirPatient[]>(() => [...PATIENTS])
+  const { patients, setPatients, loading, error } = usePatients()
+  const { bookings } = useBookings()
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -76,7 +78,7 @@ export default function PatientsPage() {
   const todaysByPatient = useMemo(() => {
     const set = new Set<string>()
 
-    const items = (BOOKINGS as any[])
+    const items = (bookings as any[])
       .map(b => ({ ...b, startD: new Date(b.start) }))
       // Guard against invalid dates
       .filter(b => !isNaN(b.startD.getTime()))
@@ -98,7 +100,7 @@ export default function PatientsPage() {
     }
 
     return set
-  }, [now])
+  }, [bookings, now])
 
   // Filter/search list (search matches name/email/mobile)
   const filtered = useMemo(() => {
@@ -135,7 +137,7 @@ const bookingToday=(p:FhirPatient)=>{
 
 function handleViewPatient(p: FhirPatient) {
   if (isDesktop) {
-    const bookingsForPatient = BOOKINGS.filter(b => b.patientId === p.id)
+    const bookingsForPatient = bookings.filter(b => b.patientId === p.id)
     setSelectedPatient(p)
     setRightPanelContent(
       <PatientDetailPanel patient={p} bookingsForPatient={bookingsForPatient} />,
@@ -212,6 +214,12 @@ function handleViewPatient(p: FhirPatient) {
         </div>
       </div>
 
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
       {/* Table */}
       <div className="hidden md:block">
       <TableFrame>
@@ -226,7 +234,9 @@ function handleViewPatient(p: FhirPatient) {
             </Tr>
           </THead>
           <TBody>
-            {filtered.map(p => {
+            {loading && <TableSkeleton rows={6} columns={5} />}
+
+            {!loading && filtered.map(p => {
               const row: PatientCoreView = toCoreView(p);
               const s = Patient.status(p) // 'active' | 'inactive'
               const hasToday = bookingToday(p)
@@ -310,6 +320,13 @@ function handleViewPatient(p: FhirPatient) {
                 </Tr>
               )
             })}
+            {!loading && filtered.length === 0 && (
+              <Tr>
+                <Td className="text-center text-ink/60" colSpan={5}>
+                  No patients found.
+                </Td>
+              </Tr>
+            )}
           </TBody>
         </TableEl>
       </TableFrame>
@@ -317,13 +334,15 @@ function handleViewPatient(p: FhirPatient) {
 
 {/* CARDS – mobile / tablet (below md) */}
 <div className="space-y-3 md:hidden">
-  {filtered.length === 0 && (
+  {loading && <CardListSkeleton items={4} lines={3} />}
+
+  {!loading && filtered.length === 0 && (
     <div className="rounded-xl border border-brand-300/30 bg-surface p-4 text-center text-sm text-ink/60">
       No patients found.
     </div>
   )}
 
-  {filtered.map(p => {
+  {!loading && filtered.map(p => {
     const hasToday = bookingToday(p)
     const s = p.active === false ? 'inactive' : 'active'
     const name = Patient.displayName(p)

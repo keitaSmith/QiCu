@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { Session } from '@/models/session'
 import { sessionsStore } from '@/data/sessionsStore'
 import { BOOKINGS } from '@/data/bookings'
+import { applyBookingStatus } from '@/lib/bookingStatus'
 
 type RouteParams = {
   params: Promise<{ patientId: string }>
@@ -20,7 +21,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   const { patientId } = await params
   const body = await req.json()
 
-  // Optional: link this session to a booking
   const bookingId: string | null = body.bookingId ?? null
 
   if (bookingId) {
@@ -48,10 +48,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     }
   }
 
-  // basic shape, adjust to your Session model
   const now = new Date()
   const newSession: Session = {
-    id: `S-${Date.now()}`, // simple ID for dev
+    id: `S-${Date.now()}`,
     patientId,
     startDateTime: body.startDateTime ?? now.toISOString(),
     chiefComplaint: body.chiefComplaint ?? '',
@@ -61,13 +60,15 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   sessionsStore.push(newSession)
 
-  // If linked to booking, write back to booking state.
   if (bookingId) {
     const booking = BOOKINGS.find(b => b.id === bookingId)
     if (booking) {
       booking.sessionId = newSession.id
-      // Linking a note means the visit has started unless it was already completed.
-      if (booking.status === 'confirmed') booking.status = 'in-progress'
+
+      if (booking.status === 'confirmed') {
+        const updated = applyBookingStatus(booking, 'in-progress')
+        Object.assign(booking, updated)
+      }
     }
   }
 

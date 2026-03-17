@@ -1,5 +1,4 @@
 'use client'
-import type { Booking } from '@/models/booking'
 import { useEffect, useMemo, useState } from 'react'
 //import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { SearchField } from '@/components/ui/SearchField'
@@ -12,33 +11,25 @@ import { SessionActionButtons } from '@/components/ui/RowActions'
 import { SessionDialog } from '@/components/sessions/SessionDialog'
 import { useSnackbar } from '@/components/ui/Snackbar'
 import { TableSkeleton } from '@/components/ui/TableSkeleton'
+import { CardListSkeleton } from '@/components/ui/CardListSkeleton'
 import { useRightPanel } from '@/components/layout/RightPanelContext'
 import { SessionDetailPanel } from '@/components/sessions/SessionDetailPanel'
+import { useBookings } from '@/hooks/useBookings'
+import { useSessions } from '@/hooks/useSessions'
 export default function SessionsPage() {
   const [q, setQ] = useState('')
-  const [sessions, setSessions] = useState<Session[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogPatient, setDialogPatient] = useState<{ id: string; name: string } | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [bookings, setBookings] = useState<Booking[]>([])
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
   const [editingSession, setEditingSession] = useState<Session | null>(null)
   const { showSnackbar } = useSnackbar()
-  const [selectedSession, setSelectedSession] = useState<Session | null>(null)
   const { setRightPanelContent } = useRightPanel()
-
-
+  const { bookings, loading: bookingsLoading, error: bookingsError } = useBookings()
+  const { sessions, setSessions, loading: sessionsLoading, error: sessionsError } = useSessions()
 
   useEffect(() => {
     setRightPanelContent(null)
   }, [setRightPanelContent])
-  // Load bookings once so we can show the linked booking info for sessions
-  useEffect(() => {
-    fetch('/api/bookings', { cache: 'no-store' })
-      .then(r => (r.ok ? r.json() : []))
-      .then((items: Booking[]) => setBookings(items))
-      .catch(() => setBookings([]))
-  }, [])
 
   const bookingMap = useMemo(
     () =>
@@ -70,32 +61,6 @@ export default function SessionsPage() {
   // stable name map for quick lookups
   const names = useMemo(() => nameMap(PATIENTS), [])
 
-  // Initial load of all sessions (by calling per-patient endpoint for now)
-  useEffect(() => {
-    async function load() {
-      try {
-        const all: Session[] = []
-        for (const p of PATIENTS) {
-          if (!p.id) continue
-          const res = await fetch(`/api/patients/${encodeURIComponent(p.id)}/sessions`)
-          if (!res.ok) continue
-          const items: Session[] = await res.json()
-          all.push(...items)
-        }
-        all.sort(
-          (a, b) =>
-            new Date(b.startDateTime).getTime() - new Date(a.startDateTime).getTime(),
-        )
-        setSessions(all)
-      } catch (err) {
-        console.error('Failed to load sessions', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    load()
-  }, [])
 
   const filtered = useMemo(() => {
     const qn = q.trim().toLowerCase()
@@ -148,7 +113,6 @@ export default function SessionsPage() {
   function showSessionDetails(session: Session) {
     const patientName = names.get(session.patientId) ?? session.patientId
 
-    setSelectedSession(session)
     setRightPanelContent(
       <SessionDetailPanel
         session={session}
@@ -183,6 +147,12 @@ export default function SessionsPage() {
         </div>
       </div>
 
+      {(sessionsError || bookingsError) && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {sessionsError ?? bookingsError}
+        </div>
+      )}
+
       {/* TABLE – desktop (md+) */}
       <div className="hidden md:block">
         <TableFrame>
@@ -200,10 +170,10 @@ export default function SessionsPage() {
             </THead>
             <TBody>
               {/* Skeleton while loading */}
-              {loading && <TableSkeleton rows={3} columns={6} />}
+              {(sessionsLoading || bookingsLoading) && <TableSkeleton rows={3} columns={7} />}
 
               {/* Actual rows once loaded */}
-                            {!loading &&
+                            {!(sessionsLoading || bookingsLoading) &&
                 filtered.map(s => {
                   const when = new Date(s.startDateTime)
                   const patientName = names.get(s.patientId) ?? s.patientId
@@ -250,7 +220,7 @@ export default function SessionsPage() {
                   )
                 })}
 
-              {!loading && filtered.length === 0 && (
+              {!(sessionsLoading || bookingsLoading) && filtered.length === 0 && (
                 <Tr>
                   <Td colSpan={6} className="py-10 text-center text-sm text-ink/60">
                     No sessions yet. Click <span className="font-medium">New session</span> to
@@ -265,20 +235,16 @@ export default function SessionsPage() {
 
       {/* CARDS – mobile / small screens */}
       <div className="space-y-3 md:hidden">
-        {loading && (
-          <div className="rounded-xl border border-brand-300/30 bg-surface p-4 text-center text-sm text-ink/60">
-            Loading sessions…
-          </div>
-        )}
+        {(sessionsLoading || bookingsLoading) && <CardListSkeleton items={4} lines={3} />}
 
-        {!loading && filtered.length === 0 && (
+        {!(sessionsLoading || bookingsLoading) && filtered.length === 0 && (
           <div className="rounded-xl border border-brand-300/30 bg-surface p-4 text-center text-sm text-ink/60">
             No sessions yet. Tap <span className="font-medium">New session</span> to record your
             first treatment.
           </div>
         )}
 
-        {!loading &&
+        {!(sessionsLoading || bookingsLoading) &&
           filtered.map(s => {
             const when = new Date(s.startDateTime)
             const patientName = names.get(s.patientId) ?? s.patientId

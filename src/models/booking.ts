@@ -49,4 +49,7 @@ export type Booking = {
 
   /** Optional link to a created session (Phase 2/3) */
   sessionId?: string | null
+
+  /** Last time the booking status changed */
+  statusUpdatedAt?: string
 }

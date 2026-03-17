@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { BOOKINGS } from '@/data/bookings'
 import type { BookingStatus } from '@/models/booking'
 import { findServiceById } from '@/data/services'
+import { applyBookingStatus } from '@/lib/bookingStatus'
 
 type UpdateBookingBody = {
   start?: string
@@ -27,7 +28,6 @@ export async function PATCH(
 
   const body = (await req.json()) as Partial<UpdateBookingBody>
 
-  // Update start
   if (body.start) {
     const start = new Date(body.start)
     if (isNaN(start.getTime())) {
@@ -39,7 +39,6 @@ export async function PATCH(
     booking.start = start.toISOString()
   }
 
-  // Update end
   if (body.end) {
     const end = new Date(body.end)
     if (isNaN(end.getTime())) {
@@ -51,7 +50,6 @@ export async function PATCH(
     booking.end = end.toISOString()
   }
 
-  // Update service via serviceId
   if (body.serviceId !== undefined) {
     if (!body.serviceId) {
       return NextResponse.json(
@@ -73,21 +71,19 @@ export async function PATCH(
     booking.serviceDurationMinutes = svc.durationMinutes
   }
 
-  // Update resource
   if (body.resource !== undefined) {
     const v = body.resource?.trim()
     booking.resource = v || undefined
   }
 
-  // Update notes
   if (body.notes !== undefined) {
     const v = body.notes?.trim()
     booking.notes = v || undefined
   }
 
-  // Update status
   if (body.status) {
-    booking.status = body.status
+    const updated = applyBookingStatus(booking, body.status)
+    Object.assign(booking, updated)
   }
 
   return NextResponse.json(booking, { status: 200 })

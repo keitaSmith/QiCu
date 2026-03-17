@@ -6,6 +6,8 @@ import { Dialog, DialogBackdrop, DialogPanel } from '@headlessui/react'
 import type { Session } from '@/models/session'
 import type { Booking } from '@/models/booking'
 import { useSnackbar } from '@/components/ui/Snackbar'
+import { emitSessionsChanged } from '@/lib/session-events'
+import { emitBookingsChanged } from '@/lib/booking-events'
 import { DateTimeField } from '@/components/ui/DateTimeField'
 import SelectField, { type SelectOption } from '@/components/ui/SelectField'
 
@@ -245,6 +247,9 @@ export function SessionDialog({
       }
 
       const saved: Session = await res.json()
+
+      emitSessionsChanged()
+      emitBookingsChanged()
 
       if (isEdit) {
         onUpdated?.(saved)
