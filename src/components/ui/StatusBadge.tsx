@@ -18,7 +18,7 @@ const COLORS: Record<AnyStatus, string> = {
   pending:   'text-amber-600 bg-amber-600/10',
   'in-progress': 'text-sky-700 bg-sky-700/10',
   cancelled: 'text-rose-600 bg-rose-600/10',
-  'no-show': 'text-slate-600 bg-slate-400/20',
+  'no-show': 'text-orange-600 bg-orange-500/10',
 
   // Patient statuses (new → mapped to existing palette)
   active:   'text-emerald-600 bg-emerald-600/10',

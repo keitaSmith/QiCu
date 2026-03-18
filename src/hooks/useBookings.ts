@@ -3,6 +3,16 @@ import { useCallback, useEffect, useState } from 'react'
 import type { Booking, BookingStatus } from '@/models/booking'
 import { BOOKINGS_CHANGED_EVENT, emitBookingsChanged } from '@/lib/booking-events'
 
+type CreateBookingInput = {
+  patientId: string
+  serviceId: string
+  start: string
+  end: string
+  resource?: string | null
+  notes?: string | null
+  status?: BookingStatus
+}
+
 type PatchBookingInput = {
   start?: string
   end?: string
@@ -16,6 +26,34 @@ async function fetchBookings(): Promise<Booking[]> {
   const res = await fetch('/api/bookings', { cache: 'no-store' })
   if (!res.ok) throw new Error('Failed to load bookings')
   return res.json()
+}
+
+
+
+async function createBooking(payload: CreateBookingInput): Promise<Booking> {
+  const res = await fetch('/api/bookings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new Error(data?.error ?? 'Failed to create booking')
+  }
+
+  return res.json()
+}
+
+async function deleteBookingRequest(bookingId: string): Promise<void> {
+  const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}`, {
+    method: 'DELETE',
+  })
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new Error(data?.error ?? 'Failed to delete booking')
+  }
 }
 
 async function patchBooking(bookingId: string, payload: PatchBookingInput): Promise<Booking> {
@@ -74,6 +112,23 @@ export function useBookings() {
     setBookings(prev => [created, ...prev])
   }, [])
 
+  const removeBooking = useCallback((bookingId: string) => {
+    setBookings(prev => prev.filter(b => b.id !== bookingId))
+  }, [])
+
+  const createBookingRecord = useCallback(async (payload: CreateBookingInput) => {
+    try {
+      setError(null)
+      const created = await createBooking(payload)
+      prependBooking(created)
+      emitBookingsChanged()
+      return created
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to create booking')
+      return null
+    }
+  }, [prependBooking])
+
   const updateBookingStatus = useCallback(async (bookingId: string, status: BookingStatus) => {
     try {
       setError(null)
@@ -100,6 +155,19 @@ export function useBookings() {
     }
   }, [replaceBooking])
 
+  const deleteBookingById = useCallback(async (bookingId: string) => {
+    try {
+      setError(null)
+      await deleteBookingRequest(bookingId)
+      removeBooking(bookingId)
+      emitBookingsChanged()
+      return true
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to delete booking')
+      return false
+    }
+  }, [removeBooking])
+
   return {
     bookings,
     loading,
@@ -108,7 +176,10 @@ export function useBookings() {
     setBookings,
     replaceBooking,
     prependBooking,
+    createBookingRecord,
+    removeBooking,
     updateBookingStatus,
     patchBookingById,
+    deleteBookingById,
   }
 }

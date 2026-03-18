@@ -1,57 +1,39 @@
-// /data/services.ts
+import type { Service } from '@/models/service'
 
-/**
- * Canonical service definitions for QiCu (Phase 1–2 prototype).
- *
- * These are NOT stored inside bookings directly.
- * Bookings store:
- *   - serviceId
- *   - serviceName (snapshot)
- *   - serviceDurationMinutes (snapshot)
- *
- * This avoids needing to parse label strings and keeps booking history stable
- * even if service definitions change later.
- */
-
-export type ServiceDef = {
-  id: string
-  name: string
-  durationMinutes: number
-}
-
-export const SERVICES: ServiceDef[] = [
+export const INITIAL_SERVICES: Service[] = [
   {
     id: 'acu-60',
     name: 'Acupuncture',
     durationMinutes: 60,
+    description: 'Standard acupuncture treatment.',
+    active: true,
   },
   {
     id: 'acu-45',
     name: 'Acupuncture',
     durationMinutes: 45,
+    description: 'Shorter acupuncture follow-up.',
+    active: true,
   },
   {
     id: 'acu-30',
     name: 'Acupuncture',
     durationMinutes: 30,
+    description: 'Brief acupuncture review.',
+    active: true,
   },
   {
     id: 'massage-30',
     name: 'Massage',
     durationMinutes: 30,
+    description: 'Focused massage treatment.',
+    active: true,
   },
   {
     id: 'massage-60',
     name: 'Massage',
     durationMinutes: 60,
+    description: 'Full massage treatment.',
+    active: true,
   },
 ]
-
-/**
- * Safe lookup helper for any component that needs service definitions
- * (dropdowns, booking dialog, analytics, etc).
- */
-export function findServiceById(id: string | null | undefined): ServiceDef | undefined {
-  if (!id) return undefined
-  return SERVICES.find(s => s.id === id)
-}

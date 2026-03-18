@@ -29,7 +29,8 @@ import {
   UserGroupIcon,
   XMarkIcon,
   CalendarDaysIcon,
-  ClipboardDocumentCheckIcon 
+  ClipboardDocumentCheckIcon,
+  WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline'
 import { ChevronDownIcon, MagnifyingGlassIcon } from '@heroicons/react/20/solid'
 
@@ -46,7 +47,8 @@ import { emitBookingsChanged } from '@/lib/booking-events'
 const navigation = [
   { name: 'Patients', href: '/dashboard/patients', icon: UserGroupIcon },
   { name: 'Bookings', href: '/dashboard/bookings', icon: CalendarDaysIcon },
-  { name: 'Sessions', href: '/dashboard/sessions', icon: ClipboardDocumentCheckIcon  },
+  { name: 'Sessions', href: '/dashboard/sessions', icon: ClipboardDocumentCheckIcon },
+  { name: 'Services', href: '/dashboard/services', icon: WrenchScrewdriverIcon },
   { name: 'Team', href: '/dashboard/team', icon: UsersIcon },
   { name: 'Projects', href: '/dashboard/projects', icon: FolderIcon },
   { name: 'Calendar', href: '/dashboard/calendar', icon: CalendarIcon },
@@ -77,6 +79,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   '/dashboard/patients',
   '/dashboard/sessions',
   '/dashboard/bookings',
+  '/dashboard/services',
 ].includes(pathname)
   const [rightPanelContent, setRightPanelContent] = useState<ReactNode | null>(null)
 
@@ -427,7 +430,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
         bookingContext={
           taskBooking
-            ? { id: taskBooking.id, code: taskBooking.code, start: taskBooking.start }
+            ? {
+                id: taskBooking.id,
+                code: taskBooking.code,
+                start: taskBooking.start,
+                serviceId: taskBooking.serviceId,
+                serviceName: taskBooking.serviceName,
+              }
             : undefined
         }
         onCreated={() => {

@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { BOOKINGS } from '@/data/bookings'
 import type { Booking } from '@/models/booking'
-import { findServiceById } from '@/data/services'
+import { findServiceById } from '@/data/servicesStore'
 
 type CreateBookingBody = {
   start: string

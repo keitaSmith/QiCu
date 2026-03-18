@@ -10,9 +10,9 @@ type Variant = 'default' | 'danger'
 type ExtraItem = { label: string; onSelect: () => void; variant?: Variant }
 
 type BaseProps = {
-  /** Primary left text button label + handler (e.g., "Edit" or "View") */
-  primaryLabel: string
-  onPrimary: () => void
+  /** Optional primary left text button label + handler (e.g., "Edit") */
+  primaryLabel?: string
+  onPrimary?: () => void
 
   /** Optional eye icon button (secondary quick view) */
   onView?: () => void
@@ -49,10 +49,12 @@ function ActionButtons({
 }: BaseProps) {
   return (
     <div className={cn('flex items-center justify-end gap-1', className)}>
-      {/* Primary text action (Edit/View text) */}
-      <button type="button" onClick={onPrimary} className={textActionBtn}>
-        {primaryLabel}
-      </button>
+      {/* Optional primary text action (Edit/View text) */}
+      {primaryLabel && onPrimary && (
+        <button type="button" onClick={onPrimary} className={textActionBtn}>
+          {primaryLabel}
+        </button>
+      )}
 
       {/* Optional Eye icon */}
       {onView && (
@@ -164,45 +166,29 @@ export function PatientsActionButtons({
 }
 
 
-/** Bookings page: View (text) + Eye + extras: Reschedule, Cancel, Set no-show, Delete */
+/** Bookings page: eye quick-view + menu actions + delete */
 export function BookingActionButtons({
   onView,
-  onReschedule,
-  onCancel,
-  onNoShow,
   onDelete,
   className,
   extras,
 }: {
   onView: () => void
-  onReschedule?: () => void
-  onCancel?: () => void
-  onNoShow?: () => void
   onDelete: () => void
   extras?: ExtraItem[]
   className?: string
 }) {
-  const baseExtras: ExtraItem[] = [
-    onReschedule && { label: 'Reschedule', onSelect: onReschedule },
-    onNoShow && { label: 'Set no-show', onSelect: onNoShow },
-    onCancel && { label: 'Cancel', onSelect: onCancel, variant: 'danger' },
-  ].filter(Boolean) as ExtraItem[]
-
-  const merged = extras ? [...baseExtras, ...extras] : baseExtras
-
   return (
     <ActionButtons
-      primaryLabel="View"
-      onPrimary={onView}
       onView={onView}
-      extras={merged}
+      extras={extras}
       onDelete={onDelete}
       className={className}
     />
   )
 }
 
-/** Sessions page: Edit (text) + Eye + extras: per-row Add session, Delete */
+/** Sessions page: Eye + menu actions + delete */
 export function SessionActionButtons({
   onEdit,
   onView,
@@ -222,10 +208,29 @@ export function SessionActionButtons({
 
   return (
     <ActionButtons
-      primaryLabel="Edit"
-      onPrimary={onEdit}
       onView={onView}
       extras={merged}
+      onDelete={onDelete}
+      className={className}
+    />
+  )
+}
+
+export function ServiceActionButtons({
+  onView,
+  onDelete,
+  extras,
+  className,
+}: {
+  onView: () => void
+  onDelete: () => void
+  extras?: ExtraItem[]
+  className?: string
+}) {
+  return (
+    <ActionButtons
+      onView={onView}
+      extras={extras}
       onDelete={onDelete}
       className={className}
     />

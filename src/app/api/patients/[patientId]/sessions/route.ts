@@ -3,25 +3,29 @@ import type { Session } from '@/models/session'
 import { sessionsStore } from '@/data/sessionsStore'
 import { BOOKINGS } from '@/data/bookings'
 import { applyBookingStatus } from '@/lib/bookingStatus'
+import { findServiceById } from '@/data/servicesStore'
 
 type RouteParams = {
   params: Promise<{ patientId: string }>
 }
 
-// GET /api/patients/:patientId/sessions
 export async function GET(_req: NextRequest, { params }: RouteParams) {
   const { patientId } = await params
-
   const sessions = sessionsStore.filter(s => s.patientId === patientId)
   return NextResponse.json(sessions)
 }
 
-// POST /api/patients/:patientId/sessions
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const { patientId } = await params
   const body = await req.json()
 
   const bookingId: string | null = body.bookingId ?? null
+  const serviceId: string | undefined = body.serviceId ?? undefined
+  const service = findServiceById(serviceId)
+
+  if (serviceId && !service) {
+    return NextResponse.json({ error: 'Service not found' }, { status: 404 })
+  }
 
   if (bookingId) {
     const booking = BOOKINGS.find(b => b.id === bookingId)
@@ -49,11 +53,19 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 
   const now = new Date()
+  const booking = bookingId ? BOOKINGS.find(item => item.id === bookingId) : undefined
+  const resolvedService = service ?? findServiceById(booking?.serviceId)
+
   const newSession: Session = {
     id: `S-${Date.now()}`,
     patientId,
     startDateTime: body.startDateTime ?? now.toISOString(),
+    serviceId: resolvedService?.id,
+    serviceName: resolvedService?.name,
     chiefComplaint: body.chiefComplaint ?? '',
+    treatmentSummary: body.treatmentSummary ?? '',
+    outcome: body.outcome ?? '',
+    treatmentNotes: body.treatmentNotes ?? '',
     techniques: body.techniques ?? [],
     bookingId,
   }
@@ -61,10 +73,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   sessionsStore.push(newSession)
 
   if (bookingId) {
-    const booking = BOOKINGS.find(b => b.id === bookingId)
     if (booking) {
       booking.sessionId = newSession.id
-
       if (booking.status === 'confirmed') {
         const updated = applyBookingStatus(booking, 'in-progress')
         Object.assign(booking, updated)

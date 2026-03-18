@@ -6,7 +6,6 @@ import { useMemo, useState, useEffect } from 'react'
 import { SearchField } from '@/components/ui/SearchField'
 import { FilterSelect, type FilterOption } from '@/components/ui/FilterSelect'
 
-import { PATIENTS } from '@/data/patients'
 import type { Booking } from '@/models/booking'
 import { dateFmt as dt, timeFmt, isSameLocalDay, startOfDay } from '@/lib/dates'
 import { displayName, nameMap } from '@/lib/patients/selectors'
@@ -33,6 +32,7 @@ import { useIsDesktop } from '@/lib/useIsDesktop'
 import { cn } from '@/lib/cn'
 import { emitBookingsChanged } from '@/lib/booking-events'
 import { useBookings } from '@/hooks/useBookings'
+import { usePatients } from '@/hooks/usePatients'
 import { TableSkeleton } from '@/components/ui/TableSkeleton'
 import { CardListSkeleton } from '@/components/ui/CardListSkeleton'
 
@@ -66,13 +66,16 @@ export default function BookingsPage() {
 
   const {
     bookings,
-    prependBooking,
+    createBookingRecord,
     replaceBooking,
     refresh: refreshBookings,
     updateBookingStatus,
+    patchBookingById,
+    deleteBookingById,
     loading,
     error,
   } = useBookings()
+  const { patients, loading: patientsLoading } = usePatients()
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
@@ -102,15 +105,15 @@ export default function BookingsPage() {
   const now = new Date()
   const todayStart = startOfDay(now)
 
-  const names = useMemo(() => nameMap(PATIENTS), [])
+  const names = useMemo(() => nameMap(patients), [patients])
 
   const patientOptions: PatientOption[] = useMemo(
     () =>
-      PATIENTS.map(p => ({
-        id: p.id,
+      patients.map(p => ({
+        id: p.id ?? '',
         name: displayName(p),
       })),
-    [],
+    [patients],
   )
 
   const preparedBookings = useMemo(() => {
@@ -173,13 +176,73 @@ export default function BookingsPage() {
   }
 
   async function handleSetStatus(b: Booking, next: Booking['status']) {
-    const updated = await updateBookingStatus(b.id, next)
-    if (!updated) return b
-    return updated
+    return updateBookingStatus(b.id, next)
+  }
+
+  function isPastHistoryView(currentView: ViewMode) {
+    return currentView === 'past'
+  }
+
+  function canRescheduleFromMenu(b: Booking, currentView: ViewMode) {
+    if (currentView === 'past') return false
+    if (b.status === 'in-progress' || b.status === 'completed' || b.status === 'no-show') {
+      return false
+    }
+    return true
+  }
+
+  function canStartVisitFromMenu(b: Booking, currentView: ViewMode) {
+    if (currentView !== 'today') return false
+    if (b.status === 'in-progress' || b.status === 'completed') return false
+    if (b.sessionId) return false
+    return true
+  }
+
+  function canBeginSessionNoteFromMenu(b: Booking, currentView: ViewMode) {
+    if (currentView !== 'today') return false
+    return b.status === 'in-progress' && !b.sessionId
+  }
+
+  function canWriteSessionNoteFromMenu(b: Booking) {
+    return b.status === 'completed' && !b.sessionId
+  }
+
+  function canCompleteVisitFromMenu(b: Booking, currentView: ViewMode) {
+    if (currentView === 'upcoming') return false
+    if (b.status === 'completed') return false
+    return true
+  }
+
+  function canMarkNoShowFromMenu(b: Booking, currentView: ViewMode) {
+    if (currentView === 'upcoming') return false
+    if (b.status === 'no-show') return false
+    return true
+  }
+
+  function canCancelFromMenu(b: Booking, currentView: ViewMode) {
+    if (b.status === 'cancelled') return false
+    return true
+  }
+
+  function confirmStatusChange(message: string) {
+    return window.confirm(message)
+  }
+
+  async function handleConfirmedStatusChange(
+    b: Booking,
+    next: Booking['status'],
+    message: string,
+  ) {
+    if (!confirmStatusChange(message)) return null
+    return handleSetStatus(b, next)
   }
 
   async function handleStartVisit(b: Booking) {
+    if (!canStartVisitFromMenu(b, 'today')) return
+
     const updated = await handleSetStatus(b, 'in-progress')
+    if (!updated) return
+
     setSessionBooking(updated)
     setSessionDialogOpen(true)
   }
@@ -209,47 +272,105 @@ export default function BookingsPage() {
     setDialogOpen(true)
   }
 
-  function handleBookingCreated(b: Booking) {
-    prependBooking(b)
-    emitBookingsChanged()
+  async function handleBookingCreated(b: Booking) {
+    await createBookingRecord({
+      patientId: b.patientId,
+      serviceId: b.serviceId,
+      start: b.start,
+      end: b.end,
+      resource: b.resource ?? null,
+      notes: b.notes ?? null,
+      status: b.status,
+    })
   }
 
-  function handleBookingUpdated(b: Booking) {
-    replaceBooking(b)
-    emitBookingsChanged()
+  async function handleBookingUpdated(b: Booking) {
+    const updated = await patchBookingById(b.id, {
+      start: b.start,
+      end: b.end,
+      serviceId: b.serviceId,
+      resource: b.resource ?? null,
+      notes: b.notes ?? null,
+    })
+
+    if (updated) {
+      replaceBooking(updated)
+      emitBookingsChanged()
+    }
   }
 
-  function bookingExtras(b: Booking) {
-    const extras: { label: string; onSelect: () => void }[] = []
+  function getBookingMenuItems(b: Booking, currentView: ViewMode) {
+    const extras: { label: string; onSelect: () => void; variant?: 'default' | 'danger' }[] = []
+    const isPastBooking = isPastHistoryView(currentView)
 
-    if (b.status === 'confirmed') {
-      const nowMs = Date.now()
-      const startMs = new Date(b.start).getTime()
-      const endMs = new Date(b.end).getTime()
-      if (startMs <= nowMs && endMs >= nowMs) {
-        extras.push({ label: 'Start visit', onSelect: () => void handleStartVisit(b) })
-      }
+    if (canRescheduleFromMenu(b, currentView)) {
+      extras.push({ label: 'Reschedule', onSelect: () => handleEditBooking(b) })
     }
 
-    if (b.status === 'in-progress') {
-      if (!b.sessionId) {
-        extras.push({ label: 'Begin session note', onSelect: () => handleCreateSessionFromBooking(b) })
-      }
-      extras.push({ label: 'Complete visit', onSelect: () => void handleSetStatus(b, 'completed') })
+    if (canStartVisitFromMenu(b, currentView)) {
+      extras.push({ label: 'Start visit', onSelect: () => void handleStartVisit(b) })
     }
 
-    if (b.status === 'completed' && !b.sessionId) {
+    if (canBeginSessionNoteFromMenu(b, currentView)) {
+      extras.push({ label: 'Begin session note', onSelect: () => handleCreateSessionFromBooking(b) })
+    }
+
+    if (canCompleteVisitFromMenu(b, currentView)) {
+      extras.push({
+        label: isPastBooking ? 'Mark as complete' : 'Complete visit',
+        onSelect: () =>
+          void (isPastBooking
+            ? handleConfirmedStatusChange(
+                b,
+                'completed',
+                `Mark past booking ${b.code} as complete?`,
+              )
+            : handleSetStatus(b, 'completed')),
+      })
+    }
+
+    if (canWriteSessionNoteFromMenu(b)) {
       extras.push({ label: 'Write session note', onSelect: () => handleCreateSessionFromBooking(b) })
+    }
+
+    if (canMarkNoShowFromMenu(b, currentView)) {
+      extras.push({
+        label: isPastBooking ? 'Mark as no-show' : 'Set no-show',
+        onSelect: () =>
+          void handleConfirmedStatusChange(
+            b,
+            'no-show',
+            isPastBooking
+              ? `Mark past booking ${b.code} as no-show?`
+              : `Mark booking ${b.code} as no-show?`,
+          ),
+      })
+    }
+
+    if (canCancelFromMenu(b, currentView)) {
+      extras.push({
+        label: isPastBooking ? 'Mark as cancelled' : 'Cancel',
+        onSelect: () =>
+          void handleConfirmedStatusChange(
+            b,
+            'cancelled',
+            isPastBooking
+              ? `Mark past booking ${b.code} as cancelled?`
+              : `Cancel booking ${b.code}?`,
+          ),
+        variant: 'danger',
+      })
     }
 
     return extras
   }
 
-  function canSetOutcome(b: Booking) {
-    return b.status === 'confirmed'
+  async function handleDeleteBooking(b: Booking) {
+    if (!confirm(`Delete booking ${b.code}? This cannot be undone.`)) return
+    await deleteBookingById(b.id)
   }
 
-  function renderDesktopRows(items: BookingWithDates[], emptyLabel: string) {
+  function renderDesktopRows(items: BookingWithDates[], emptyLabel: string, currentView: ViewMode) {
     return (
       <div className="hidden md:block">
         <TableFrame>
@@ -266,9 +387,9 @@ export default function BookingsPage() {
             </THead>
 
             <TBody>
-              {loading && <TableSkeleton rows={3} columns={6} />}
+              {(loading || patientsLoading) && <TableSkeleton rows={4} columns={6} />}
 
-              {!loading && items.map(b => (
+              {!(loading || patientsLoading) && items.map(b => (
                 <Tr key={b.id}>
                   <Td>{names.get(b.patientId) ?? 'Unknown'}</Td>
 
@@ -291,17 +412,14 @@ export default function BookingsPage() {
                   <Td className="text-right">
                     <BookingActionButtons
                       onView={() => handleViewBooking(b)}
-                      onReschedule={() => handleEditBooking(b)}
-                      onCancel={canSetOutcome(b) ? () => handleSetStatus(b, 'cancelled') : undefined}
-                      onNoShow={canSetOutcome(b) ? () => handleSetStatus(b, 'no-show') : undefined}
-                      onDelete={() => console.log('delete booking', b.id)}
-                      extras={bookingExtras(b)}
+                      onDelete={() => void handleDeleteBooking(b)}
+                      extras={getBookingMenuItems(b, currentView)}
                     />
                   </Td>
                 </Tr>
               ))}
 
-              {!loading && items.length === 0 && (
+              {!(loading || patientsLoading) && items.length === 0 && (
                 <Tr>
                   <Td className="text-center text-ink/60" colSpan={6}>
                     {emptyLabel}
@@ -315,18 +433,18 @@ export default function BookingsPage() {
     )
   }
 
-  function renderMobileCards(items: BookingWithDates[], emptyLabel: string) {
+  function renderMobileCards(items: BookingWithDates[], emptyLabel: string, currentView: ViewMode) {
     return (
       <div className="space-y-3 md:hidden">
-        {!loading && items.length === 0 && (
+        {!(loading || patientsLoading) && items.length === 0 && (
           <div className="rounded-xl border border-brand-300/30 bg-surface p-4 text-center text-sm text-ink/60">
             {emptyLabel}
           </div>
         )}
 
-        {loading && <CardListSkeleton items={4} lines={3} />}
+        {(loading || patientsLoading) && <CardListSkeleton items={4} lines={3} />}
 
-              {!loading && items.map(b => (
+              {!(loading || patientsLoading) && items.map(b => (
           <div
             key={b.id}
             className="rounded-xl border border-brand-300/40 bg-surface p-4 shadow-sm"
@@ -336,12 +454,6 @@ export default function BookingsPage() {
                 <div className="text-base font-semibold text-ink">
                   {names.get(b.patientId) ?? 'Unknown'}
                 </div>
-
-      {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </div>
-      )}
 
                 <div className="text-sm text-ink/80">
                   {b.serviceName} ({b.serviceDurationMinutes} min)
@@ -363,11 +475,8 @@ export default function BookingsPage() {
             <div className="mt-3 flex justify-end">
               <BookingActionButtons
                 onView={() => handleViewBooking(b)}
-                onReschedule={() => handleEditBooking(b)}
-                onCancel={canSetOutcome(b) ? () => handleSetStatus(b, 'cancelled') : undefined}
-                onNoShow={canSetOutcome(b) ? () => handleSetStatus(b, 'no-show') : undefined}
-                onDelete={() => console.log('delete booking', b.id)}
-                extras={bookingExtras(b)}
+                onDelete={() => void handleDeleteBooking(b)}
+                extras={getBookingMenuItems(b, currentView)}
               />
             </div>
           </div>
@@ -376,11 +485,11 @@ export default function BookingsPage() {
     )
   }
 
-  function renderBookingList(items: BookingWithDates[], emptyLabel: string) {
+  function renderBookingList(items: BookingWithDates[], emptyLabel: string, currentView: ViewMode) {
     return (
       <>
-        {renderDesktopRows(items, emptyLabel)}
-        {renderMobileCards(items, emptyLabel)}
+        {renderDesktopRows(items, emptyLabel, currentView)}
+        {renderMobileCards(items, emptyLabel, currentView)}
       </>
     )
   }
@@ -413,8 +522,8 @@ export default function BookingsPage() {
         </div>
       </div>
 
-      <div className="space-y-3">
-        <div className="inline-flex w-full flex-wrap gap-2 rounded-2xl border border-brand-300/30 bg-surface p-1.5 sm:w-auto">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex w-full flex-wrap gap-2 rounded-2xl border border-brand-300/30 bg-surface p-1.5 lg:w-auto">
           {([
             { value: 'today', label: 'Today' },
             { value: 'upcoming', label: 'Upcoming' },
@@ -442,19 +551,19 @@ export default function BookingsPage() {
           })}
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-ink">Status</p>
-            <p className="text-xs text-ink/60">Filter the current booking view by status.</p>
-          </div>
-          <FilterSelect
-            value={status}
-            onChange={setStatus}
-            options={statusOptions}
-            className="sm:w-52"
-          />
-        </div>
+        <FilterSelect
+          value={status}
+          onChange={setStatus}
+          options={statusOptions}
+          className="w-full sm:w-52 lg:ml-auto"
+        />
       </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {view === 'today' && (
         <div className="space-y-6">
@@ -465,6 +574,7 @@ export default function BookingsPage() {
             {renderBookingList(
               status === 'all' ? todayActive : todayFiltered,
               status === 'all' ? 'No active bookings today.' : 'No bookings match this status today.',
+              'today',
             )}
           </section>
 
@@ -473,7 +583,7 @@ export default function BookingsPage() {
               <div>
                 <h3 className="text-base font-semibold text-ink">Resolved today</h3>
               </div>
-              {renderBookingList(todayResolved, 'No resolved bookings today yet.')}
+              {renderBookingList(todayResolved, 'No resolved bookings today yet.', 'today')}
             </section>
           )}
         </div>
@@ -483,12 +593,9 @@ export default function BookingsPage() {
         <div className="space-y-4">
           <div>
             <h2 className="text-lg font-semibold text-ink">Upcoming</h2>
-            <p className="text-sm text-ink/60">
-              Future bookings are paginated so the practitioner sees the nearest appointments first.
-            </p>
           </div>
 
-          {renderBookingList(pagedUpcoming, 'No upcoming bookings found.')}
+          {renderBookingList(pagedUpcoming, 'No upcoming bookings found.', 'upcoming')}
 
           {upcomingFiltered.length > pagedUpcoming.length && (
             <div className="flex justify-center">
@@ -508,12 +615,9 @@ export default function BookingsPage() {
         <div className="space-y-4">
           <div>
             <h2 className="text-lg font-semibold text-ink">Past</h2>
-            <p className="text-sm text-ink/60">
-              Historical bookings stay in one place so practitioners can review and correct older records when needed.
-            </p>
           </div>
 
-          {renderBookingList(pagedPast, 'No past bookings found.')}
+          {renderBookingList(pagedPast, 'No past bookings found.', 'past')}
 
           {pastFiltered.length > pagedPast.length && (
             <div className="flex justify-center">
@@ -554,6 +658,8 @@ export default function BookingsPage() {
                 id: sessionBooking.id,
                 code: sessionBooking.code,
                 start: sessionBooking.start,
+                serviceId: sessionBooking.serviceId,
+                serviceName: sessionBooking.serviceName,
               }
             : undefined
         }

@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { BOOKINGS } from '@/data/bookings'
 import type { BookingStatus } from '@/models/booking'
-import { findServiceById } from '@/data/services'
+import { findServiceById } from '@/data/servicesStore'
 import { applyBookingStatus } from '@/lib/bookingStatus'
 
 type UpdateBookingBody = {
@@ -87,4 +87,22 @@ export async function PATCH(
   }
 
   return NextResponse.json(booking, { status: 200 })
+}
+
+
+export async function DELETE(
+  _req: NextRequest,
+  context: { params: Promise<{ bookingId: string }> },
+) {
+  const { bookingId } = await context.params
+
+  const index = BOOKINGS.findIndex(b => b.id === bookingId)
+
+  if (index === -1) {
+    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  BOOKINGS.splice(index, 1)
+
+  return NextResponse.json({ ok: true }, { status: 200 })
 }

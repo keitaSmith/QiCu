@@ -1,7 +1,26 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import type { Session } from '@/models/session'
-import { SESSIONS_CHANGED_EVENT } from '@/lib/session-events'
+import { SESSIONS_CHANGED_EVENT, emitSessionsChanged } from '@/lib/session-events'
+
+type SessionMutationInput = {
+  startDateTime?: string
+  serviceId?: string
+  chiefComplaint?: string
+  treatmentSummary?: string
+  outcome?: string
+  treatmentNotes?: string
+  techniques?: string[]
+  bookingId?: string | null
+}
+
+async function parseJsonSafely(res: Response) {
+  try {
+    return await res.json()
+  } catch {
+    return null
+  }
+}
 
 async function fetchSessions(): Promise<Session[]> {
   const res = await fetch('/api/sessions', { cache: 'no-store' })
@@ -41,5 +60,45 @@ export function useSessions() {
     return () => window.removeEventListener(SESSIONS_CHANGED_EVENT, onChanged)
   }, [refresh])
 
-  return { sessions, setSessions, loading, error, refresh }
+  const updateSessionRecord = useCallback(
+    async (sessionId: string, input: SessionMutationInput) => {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+
+      const data = await parseJsonSafely(res)
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to update session')
+      }
+
+      emitSessionsChanged()
+      return data as Session
+    },
+    [],
+  )
+
+  const deleteSessionRecord = useCallback(async (sessionId: string) => {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+    })
+
+    const data = await parseJsonSafely(res)
+    if (!res.ok) {
+      throw new Error(data?.error || 'Failed to delete session')
+    }
+
+    emitSessionsChanged()
+  }, [])
+
+  return {
+    sessions,
+    setSessions,
+    loading,
+    error,
+    refresh,
+    updateSessionRecord,
+    deleteSessionRecord,
+  }
 }

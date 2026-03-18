@@ -53,7 +53,14 @@ export default function PatientsPage() {
     setRightPanelContent(null)
   }, [setRightPanelContent])
 
-  const { patients, setPatients, loading, error } = usePatients()
+  const {
+    patients,
+    loading,
+    error,
+    createPatientRecord,
+    patchPatientById,
+    deletePatientById,
+  } = usePatients()
   const { bookings } = useBookings()
 
   // Dialog state
@@ -272,9 +279,9 @@ function handleViewPatient(p: FhirPatient) {
         setEditingPatient(p)
         setDialogOpen(true)
       }}
-      onDelete={() => {
+      onDelete={async () => {
         if (confirm(`Delete ${Patient.displayName(p)}? This cannot be undone.`)) {
-          setPatients(prev => prev.filter(x => x.id !== p.id))
+          await deletePatientById(p.id ?? '')
         }
       }}
       extras={[
@@ -292,17 +299,17 @@ function handleViewPatient(p: FhirPatient) {
         s === 'inactive'
           ? {
               label: 'Unarchive',
-              onSelect: () =>
-                setPatients(prev =>
-                  prev.map(x => (x.id === p.id ? Patient.unarchive(x) : x)),
-                ),
+              onSelect: async () => {
+                const updated = Patient.unarchive(p)
+                await patchPatientById(p.id ?? '', updated)
+              },
             }
           : {
               label: 'Archive',
-              onSelect: () =>
-                setPatients(prev =>
-                  prev.map(x => (x.id === p.id ? Patient.archive(x) : x)),
-                ),
+              onSelect: async () => {
+                const updated = Patient.archive(p)
+                await patchPatientById(p.id ?? '', updated)
+              },
             },
         {
           label: 'New booking',
@@ -448,25 +455,17 @@ function handleViewPatient(p: FhirPatient) {
               s === 'inactive'
                 ? {
                     label: 'Unarchive',
-                    onSelect: () =>
-                      setPatients(prev =>
-                        prev.map(x =>
-                          x.id === p.id
-                            ? Patient.unarchive(x)
-                            : x,
-                        ),
-                      ),
+                    onSelect: async () => {
+                      const updated = Patient.unarchive(p)
+                      await patchPatientById(p.id ?? '', updated)
+                    },
                   }
                 : {
                     label: 'Archive',
-                    onSelect: () =>
-                      setPatients(prev =>
-                        prev.map(x =>
-                          x.id === p.id
-                            ? Patient.archive(x)
-                            : x,
-                        ),
-                      ),
+                    onSelect: async () => {
+                      const updated = Patient.archive(p)
+                      await patchPatientById(p.id ?? '', updated)
+                    },
                   },
               {
                 label: 'New booking',
@@ -496,16 +495,19 @@ function handleViewPatient(p: FhirPatient) {
         onClose={() => setDialogOpen(false)}
         mode={dialogMode}
         initialPatient={editingPatient}
-        onCreate={created => setPatients(prev => [created, ...prev])}
-        onUpdate={updated =>
-          setPatients(prev => prev.map(p => (p.id === updated.id ? updated : p)))
-        }
+        onCreate={async created => {
+          await createPatientRecord(created)
+        }}
+        onUpdate={async updated => {
+          await patchPatientById(updated.id ?? '', updated)
+        }}
       />
       <SessionDialog
         open={sessionDialogOpen}
         onClose={() => setSessionDialogOpen(false)}
         patientId={sessionPatient?.id ?? null}
         patientName={sessionPatient?.name}
+        bookings={bookings}
         // No onCreated needed here, since the Patients page does not show sessions.
       />
     </div>
