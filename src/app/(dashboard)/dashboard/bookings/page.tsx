@@ -26,15 +26,21 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useRightPanel } from '@/components/layout/RightPanelContext'
 import { BookingDetailPanel } from '@/components/bookings/BookingDetailPanel'
 import { BookingDialog } from '@/components/bookings/BookingDialog'
+import { BookingImportDialog } from '@/components/bookings/BookingImportDialog'
 
 import { useRouter } from 'next/navigation'
 import { useIsDesktop } from '@/lib/useIsDesktop'
 import { cn } from '@/lib/cn'
 import { emitBookingsChanged } from '@/lib/booking-events'
 import { useBookings } from '@/hooks/useBookings'
+import { useServices } from '@/hooks/useServices'
 import { usePatients } from '@/hooks/usePatients'
 import { TableSkeleton } from '@/components/ui/TableSkeleton'
 import { CardListSkeleton } from '@/components/ui/CardListSkeleton'
+import { useSnackbar } from '@/components/ui/Snackbar'
+import { buildBookingsExportCsv, normalizePatientLookupKey, normalizeServiceLookupKey, type BookingImportPreviewRow } from '@/lib/bookingsImportExport'
+import * as PatientModel from '@/models/patient'
+import { toCoreView } from '@/models/patient.coreView'
 
 type PatientOption = { id: string; name: string }
 type ViewMode = 'today' | 'upcoming' | 'past'
@@ -43,6 +49,18 @@ type StatusFilter = 'all' | 'confirmed' | 'in-progress' | 'completed' | 'cancell
 type BookingWithDates = Booking & { startD: Date; endD: Date }
 
 const PAGE_SIZE = 10
+
+function downloadCsv(filename: string, csv: string) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
 
 
 function isResolved(status: Booking['status']) {
@@ -63,6 +81,7 @@ export default function BookingsPage() {
   const { setRightPanelContent } = useRightPanel()
   const router = useRouter()
   const isDesktop = useIsDesktop()
+  const { showSnackbar } = useSnackbar()
 
   const {
     bookings,
@@ -75,7 +94,13 @@ export default function BookingsPage() {
     loading,
     error,
   } = useBookings()
-  const { patients, loading: patientsLoading } = usePatients()
+  const { patients, loading: patientsLoading, createPatientRecord } = usePatients()
+  const { services, createServiceRecord } = useServices()
+
+  const patientCoreViews = useMemo(
+    () => patients.map(toCoreView),
+    [patients],
+  )
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
@@ -83,6 +108,7 @@ export default function BookingsPage() {
 
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false)
   const [sessionBooking, setSessionBooking] = useState<Booking | null>(null)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
 
   const statusOptions: FilterOption<StatusFilter>[] = [
     { value: 'all', label: 'All statuses' },
@@ -370,6 +396,119 @@ export default function BookingsPage() {
     await deleteBookingById(b.id)
   }
 
+
+  function handleExportBookings() {
+    const csv = buildBookingsExportCsv(bookings, patientCoreViews)
+    const datePart = new Date().toISOString().slice(0, 10)
+    downloadCsv(`qicu-bookings-${datePart}.csv`, csv)
+    showSnackbar({ variant: 'success', message: 'Bookings exported as CSV.' })
+  }
+
+  async function handleImportRows(rows: BookingImportPreviewRow[]) {
+    let importedCount = 0
+    let createdPatientCount = 0
+    let createdServiceCount = 0
+
+    const patientIdByName = new Map(
+      patientCoreViews.map(patient => [normalizePatientLookupKey(patient.name), patient.id]),
+    )
+    const serviceByKey = new Map(
+      services.map(service => [normalizeServiceLookupKey(service.name), service]),
+    )
+
+    const buildImportedPatient = (fullName: string) => {
+      const cleaned = fullName.trim().replace(/\s+/g, ' ')
+      const parts = cleaned.split(' ').filter(Boolean)
+      const firstName = parts.shift() ?? cleaned
+      const lastName = parts.join(' ') || 'Imported'
+      return PatientModel.create(
+        {
+          firstName,
+          lastName,
+          gender: 'prefer_not_to_say',
+          dob: '1900-01-01',
+          inviteMode: 'profileOnly',
+        },
+        { locale: 'de-CH' },
+      )
+    }
+
+    for (const row of rows) {
+      let patientId = row.matchedPatientId
+      let serviceId = row.matchedServiceId
+
+      if (!patientId && row.patientName) {
+        const patientKey = normalizePatientLookupKey(row.patientName)
+        patientId = patientIdByName.get(patientKey)
+
+        if (!patientId) {
+          const createdPatient = await createPatientRecord(buildImportedPatient(row.patientName))
+          if (!createdPatient?.id) continue
+
+          patientId = createdPatient.id
+          patientIdByName.set(patientKey, patientId)
+          createdPatientCount += 1
+        }
+      }
+
+      if (!serviceId && row.serviceName) {
+        const serviceKey = normalizeServiceLookupKey(row.serviceName)
+        const existingService = serviceByKey.get(serviceKey)
+        serviceId = existingService?.id
+
+        if (!serviceId) {
+          const durationMinutes = Math.max(
+            15,
+            Math.round((new Date(row.end).getTime() - new Date(row.start).getTime()) / 60000),
+          )
+
+          const createdService = await createServiceRecord({
+            name: row.serviceName.trim(),
+            durationMinutes,
+            description: 'Imported from bookings CSV',
+            active: true,
+          })
+
+          if (!createdService?.id) continue
+
+          serviceId = createdService.id
+          serviceByKey.set(serviceKey, createdService)
+          createdServiceCount += 1
+        }
+      }
+
+      if (!patientId || !serviceId) continue
+
+      const created = await createBookingRecord({
+        patientId,
+        serviceId,
+        start: row.start,
+        end: row.end,
+        resource: row.resource || null,
+        notes: row.notes || null,
+        status: row.status,
+      })
+
+      if (created) importedCount += 1
+    }
+
+    if (importedCount === 0) {
+      showSnackbar({ variant: 'error', message: 'No valid bookings were imported.' })
+      throw new Error('No valid bookings were imported.')
+    }
+
+    const details: string[] = []
+    if (createdPatientCount > 0) details.push(`${createdPatientCount} patient${createdPatientCount === 1 ? '' : 's'}`)
+    if (createdServiceCount > 0) details.push(`${createdServiceCount} service${createdServiceCount === 1 ? '' : 's'}`)
+
+    showSnackbar({
+      variant: 'success',
+      message: details.length > 0
+        ? `Imported ${importedCount} booking${importedCount === 1 ? '' : 's'} and created ${details.join(' and ')}.`
+        : `Imported ${importedCount} booking${importedCount === 1 ? '' : 's'}.`,
+    })
+  }
+
   function renderDesktopRows(items: BookingWithDates[], emptyLabel: string, currentView: ViewMode) {
     return (
       <div className="hidden md:block">
@@ -514,6 +653,22 @@ export default function BookingsPage() {
 
           <button
             type="button"
+            onClick={() => setImportDialogOpen(true)}
+            className="rounded-lg border border-brand-300/40 bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-brand-300/10 focus:outline-none"
+          >
+            Import
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportBookings}
+            className="rounded-lg border border-brand-300/40 bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-brand-300/10 focus:outline-none"
+          >
+            Export
+          </button>
+
+          <button
+            type="button"
             onClick={handleNewBooking}
             className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 focus:outline-none"
           >
@@ -632,6 +787,14 @@ export default function BookingsPage() {
           )}
         </div>
       )}
+
+      <BookingImportDialog
+        open={importDialogOpen}
+        onClose={() => setImportDialogOpen(false)}
+        patients={patientCoreViews}
+        services={services}
+        onImportRows={handleImportRows}
+      />
 
       <BookingDialog
         open={dialogOpen}
