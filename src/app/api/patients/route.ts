@@ -1,28 +1,29 @@
-// src/app/api/patients/route.ts
 import { NextRequest, NextResponse } from 'next/server'
+
 import { patientsStore } from '@/data/patientsStore'
 import type { FhirPatient } from '@/models/patient'
 import { FhirPatientSchema } from '@/schemas/fhir/patient'
+import {
+  getPractitionerIdFromRequest,
+  patientBelongsToPractitioner,
+  setPatientPractitionerId,
+} from '@/lib/practitioners'
 
-export async function GET() {
-  return NextResponse.json(patientsStore, { status: 200 })
+export async function GET(req: NextRequest) {
+  const practitionerId = getPractitionerIdFromRequest(req)
+  const patients = patientsStore.filter(patient => patientBelongsToPractitioner(patient, practitionerId))
+  return NextResponse.json(patients, { status: 200 })
 }
 
 export async function POST(req: NextRequest) {
+  const practitionerId = getPractitionerIdFromRequest(req)
+
   try {
-    const json = await req.json()
-    const parsed = FhirPatientSchema.parse(json)
-
-    const id =
-      parsed.id && parsed.id.trim().length > 0
-        ? parsed.id
-        : `P-${Date.now().toString()}`
-
-    const patient: FhirPatient = { ...parsed, id }
-
-    patientsStore.unshift(patient)
-
-    return NextResponse.json(patient, { status: 201 })
+    const body = (await req.json()) as FhirPatient
+    const withOwnership = setPatientPractitionerId(body, practitionerId)
+    const parsed = FhirPatientSchema.parse(withOwnership)
+    patientsStore.unshift(parsed)
+    return NextResponse.json(parsed, { status: 201 })
   } catch (err: any) {
     if (err?.name === 'ZodError') {
       return NextResponse.json(
@@ -35,9 +36,6 @@ export async function POST(req: NextRequest) {
     }
 
     console.error('Error in POST /api/patients:', err)
-    return NextResponse.json(
-      { error: 'Failed to create patient' },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: 'Failed to create patient' }, { status: 500 })
   }
 }

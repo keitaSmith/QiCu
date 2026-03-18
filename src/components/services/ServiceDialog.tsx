@@ -11,7 +11,7 @@ type Props = {
   onClose: () => void
   mode?: 'create' | 'edit'
   service?: Service | null
-  onCreated?: (service: Omit<Service, 'id'>) => Promise<void> | void
+  onCreated?: (service: Omit<Service, 'id' | 'practitionerId'>) => Promise<void> | void
   onUpdated?: (service: Partial<Service>) => Promise<void> | void
 }
 

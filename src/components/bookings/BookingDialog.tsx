@@ -8,6 +8,9 @@ import { useSnackbar } from '@/components/ui/Snackbar'
 import SelectField, { type SelectOption } from '@/components/ui/SelectField'
 import SearchableSelectField, { type SearchableSelectOption } from '@/components/ui/SearchableSelectField'
 import { useServices } from '@/hooks/useServices'
+import { usePractitioner } from '@/components/layout/PractitionerContext'
+import { BookingTimePicker } from '@/components/bookings/BookingTimePicker'
+import { timeFmt } from '@/lib/dates'
 
 type PatientOption = { id: string; name: string }
 
@@ -48,8 +51,10 @@ export function BookingDialog({
   patients,
   onCreated,
   onUpdated,
+  existingBookings,
 }: BookingDialogProps) {
   const { showSnackbar } = useSnackbar()
+  const { practitionerId } = usePractitioner()
   const { services } = useServices()
   const isEdit = mode === 'edit' && !!booking
 
@@ -188,6 +193,7 @@ export function BookingDialog({
         const newBooking: Booking = {
           id: crypto.randomUUID(),
           code: generateBookingCode(),
+          practitionerId,
           patientId: effectivePatientId,
           serviceId,
           serviceName,
@@ -252,33 +258,33 @@ export function BookingDialog({
               <SelectField<string>
                 label="Service"
                 value={serviceId || null}
-                onChange={value => setServiceId(value)}
+                onChange={value => {
+                  const nextServiceId = value ?? ''
+                  setServiceId(nextServiceId)
+                  setStartLocal('')
+                  setEndLocal('')
+                }}
                 options={serviceOptions}
                 placeholder="Select a service…"
                 required
               />
 
-              <div>
-                <label className="mb-1 block text-xs text-ink/60">Start time</label>
-                <input
-                  type="datetime-local"
-                  value={startLocal}
-                  onChange={e => setStartLocal(e.target.value)}
-                  className="w-full border-0 border-b border-brand-300/40 bg-transparent px-0 py-2 text-sm text-ink focus:border-brand-300 focus:outline-none focus:ring-0"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs text-ink/60">End time</label>
-                <input
-                  type="datetime-local"
-                  value={endLocal}
-                  onChange={e => setEndLocal(e.target.value)}
-                  className="w-full border-0 border-b border-brand-300/40 bg-transparent px-0 py-2 text-sm text-ink focus:border-brand-300 focus:outline-none focus:ring-0"
-                  required
-                />
-              </div>
+              {serviceId && (
+                <div>
+                  <BookingTimePicker
+                    label="Start time"
+                    value={startLocal || null}
+                    onChange={newValue => setStartLocal(newValue ?? '')}
+                    serviceDurationMinutes={serviceDurationMinutes}
+                    existingBookings={existingBookings.filter(existingBooking => !booking || existingBooking.id !== booking.id)}
+                  />
+                  {startLocal && serviceDurationMinutes && endLocal && (
+                    <p className="mt-1 text-xs text-ink/60">
+                      Ends around {timeFmt.format(new Date(endLocal))}
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="mb-1 block text-xs text-ink/60">Resource (optional)</label>

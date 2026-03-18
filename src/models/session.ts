@@ -16,6 +16,7 @@ export type TcmFindings = {
 
 export type Session = {
   id: SessionId
+  practitionerId: string
   patientId: string
   startDateTime: string
   serviceId?: string

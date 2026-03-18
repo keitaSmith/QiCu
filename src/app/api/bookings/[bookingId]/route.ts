@@ -1,9 +1,9 @@
-// src/app/api/bookings/[bookingId]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { BOOKINGS } from '@/data/bookings'
 import type { BookingStatus } from '@/models/booking'
-import { findServiceById } from '@/data/servicesStore'
+import { findServiceByIdForPractitioner } from '@/data/servicesStore'
 import { applyBookingStatus } from '@/lib/bookingStatus'
+import { getPractitionerIdFromRequest } from '@/lib/practitioners'
 
 type UpdateBookingBody = {
   start?: string
@@ -18,9 +18,10 @@ export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ bookingId: string }> },
 ) {
+  const practitionerId = getPractitionerIdFromRequest(req)
   const { bookingId } = await context.params
 
-  const booking = BOOKINGS.find(b => b.id === bookingId)
+  const booking = BOOKINGS.find(b => b.id === bookingId && b.practitionerId === practitionerId)
 
   if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
@@ -31,10 +32,7 @@ export async function PATCH(
   if (body.start) {
     const start = new Date(body.start)
     if (isNaN(start.getTime())) {
-      return NextResponse.json(
-        { error: 'Invalid start datetime' },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: 'Invalid start datetime' }, { status: 400 })
     }
     booking.start = start.toISOString()
   }
@@ -42,28 +40,19 @@ export async function PATCH(
   if (body.end) {
     const end = new Date(body.end)
     if (isNaN(end.getTime())) {
-      return NextResponse.json(
-        { error: 'Invalid end datetime' },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: 'Invalid end datetime' }, { status: 400 })
     }
     booking.end = end.toISOString()
   }
 
   if (body.serviceId !== undefined) {
     if (!body.serviceId) {
-      return NextResponse.json(
-        { error: 'serviceId cannot be empty' },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: 'serviceId cannot be empty' }, { status: 400 })
     }
 
-    const svc = findServiceById(body.serviceId)
+    const svc = findServiceByIdForPractitioner(body.serviceId, practitionerId)
     if (!svc) {
-      return NextResponse.json(
-        { error: 'Unknown serviceId' },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: 'Unknown serviceId' }, { status: 400 })
     }
 
     booking.serviceId = svc.id
@@ -72,13 +61,11 @@ export async function PATCH(
   }
 
   if (body.resource !== undefined) {
-    const v = body.resource?.trim()
-    booking.resource = v || undefined
+    booking.resource = body.resource?.trim() || undefined
   }
 
   if (body.notes !== undefined) {
-    const v = body.notes?.trim()
-    booking.notes = v || undefined
+    booking.notes = body.notes?.trim() || undefined
   }
 
   if (body.status) {
@@ -89,14 +76,14 @@ export async function PATCH(
   return NextResponse.json(booking, { status: 200 })
 }
 
-
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ bookingId: string }> },
 ) {
+  const practitionerId = getPractitionerIdFromRequest(req)
   const { bookingId } = await context.params
 
-  const index = BOOKINGS.findIndex(b => b.id === bookingId)
+  const index = BOOKINGS.findIndex(b => b.id === bookingId && b.practitionerId === practitionerId)
 
   if (index === -1) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })

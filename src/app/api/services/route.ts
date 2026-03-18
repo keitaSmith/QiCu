@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { servicesStore } from '@/data/servicesStore'
 import type { Service } from '@/models/service'
+import { getPractitionerIdFromRequest } from '@/lib/practitioners'
 
 function slugify(value: string) {
   return value
@@ -11,11 +12,13 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, '')
 }
 
-export async function GET() {
-  return NextResponse.json(servicesStore, { status: 200 })
+export async function GET(req: NextRequest) {
+  const practitionerId = getPractitionerIdFromRequest(req)
+  return NextResponse.json(servicesStore.filter(service => service.practitionerId === practitionerId), { status: 200 })
 }
 
 export async function POST(req: NextRequest) {
+  const practitionerId = getPractitionerIdFromRequest(req)
   const body = (await req.json()) as Partial<Service>
   const name = body.name?.trim()
   const durationMinutes = Number(body.durationMinutes)
@@ -32,6 +35,7 @@ export async function POST(req: NextRequest) {
 
   const duplicate = servicesStore.find(
     service =>
+      service.practitionerId === practitionerId &&
       service.name.trim().toLowerCase() === name.toLowerCase() &&
       service.durationMinutes === durationMinutes,
   )
@@ -44,7 +48,8 @@ export async function POST(req: NextRequest) {
   }
 
   const created: Service = {
-    id: `${slugify(name)}-${durationMinutes}-${Math.random().toString(36).slice(2, 6)}`,
+    id: `${slugify(practitionerId)}-${slugify(name)}-${durationMinutes}-${Math.random().toString(36).slice(2, 6)}`,
+    practitionerId,
     name,
     durationMinutes,
     description,

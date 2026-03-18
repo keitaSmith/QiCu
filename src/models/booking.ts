@@ -15,6 +15,9 @@ export type Booking = {
   /** Human-friendly code (for UI/emails) */
   code: string
 
+  /** Practitioner that owns this booking */
+  practitionerId: string
+
   /** Patient this booking belongs to */
   patientId: string // e.g., 'P-1001'
 

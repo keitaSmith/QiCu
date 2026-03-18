@@ -13,6 +13,8 @@ import SelectField, { type SelectOption } from '@/components/ui/SelectField'
 import RadioField from '@/components/ui/RadioField'
 import SearchableSelectField, { type SearchableSelectOption } from '@/components/ui/SearchableSelectField'
 import { useServices } from '@/hooks/useServices'
+import { usePractitioner } from '@/components/layout/PractitionerContext'
+import { withPractitionerHeaders } from '@/lib/practitioners'
 
 type PatientOption = { id: string; name: string }
 
@@ -60,6 +62,7 @@ export function SessionDialog({
   onUpdated,
 }: SessionDialogProps) {
   const { showSnackbar } = useSnackbar()
+  const { practitionerId } = usePractitioner()
   const { services } = useServices()
   const isEdit = mode === 'edit' && !!session
 
@@ -241,7 +244,7 @@ export function SessionDialog({
 
       const res = await fetch(endpoint, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: withPractitionerHeaders(practitionerId, { 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
       })
 

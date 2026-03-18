@@ -1,79 +1,64 @@
-// /data/bookings.ts
 import type { Booking } from '@/models/booking'
 
-function todayAt(hh: string, mm: string) {
-  const d = new Date()
+const TOM = 'prac-tom-cook'
+const KEITA = 'prac-keita-smith'
+
+function formatDate(d: Date) {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}T${hh}:${mm}:00`
+  return `${y}-${m}-${day}`
 }
 
-function dayOffsetAt(offsetDays: number, hh: string, mm: string) {
+function atOffset(offsetDays: number, hh: string, mm: string) {
   const d = new Date()
   d.setDate(d.getDate() + offsetDays)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}T${hh}:${mm}:00`
+  return `${formatDate(d)}T${hh}:${mm}:00`
 }
 
 function minuteOffsetToday(offsetMinutes: number) {
   const d = new Date()
   d.setSeconds(0, 0)
   d.setMinutes(d.getMinutes() + offsetMinutes)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
-  return `${y}-${m}-${day}T${hh}:${mm}:00`
+  return `${formatDate(d)}T${hh}:${mm}:00`
 }
 
 export const BOOKINGS: Booking[] = [
   {
-    id: 'b-today-001',
-    code: 'BKG-TODAY-001',
-    patientId: 'P-1001',
-    serviceId: 'acu-60',
+    id: 'b-tom-today-001',
+    practitionerId: TOM,
+    code: 'BKG-TOM-001',
+    patientId: 'P-T-1001',
+    serviceId: 'tom-acu-60',
     serviceName: 'Acupuncture',
     serviceDurationMinutes: 60,
     resource: 'Room 1',
-    start: todayAt('09', '00'),
-    end: todayAt('10', '00'),
+    start: atOffset(0, '09', '00'),
+    end: atOffset(0, '10', '00'),
     status: 'confirmed',
     notes: 'Initial acupuncture consultation.',
   },
   {
-    id: 'b-today-002',
-    code: 'BKG-TODAY-002',
-    patientId: 'P-1002',
-    serviceId: 'acu-30',
+    id: 'b-tom-today-002',
+    practitionerId: TOM,
+    code: 'BKG-TOM-002',
+    patientId: 'P-T-1002',
+    serviceId: 'tom-acu-30',
     serviceName: 'Acupuncture',
     serviceDurationMinutes: 30,
     resource: 'Room 2',
-    start: todayAt('11', '00'),
-    end: todayAt('11', '30'),
+    start: atOffset(0, '11', '00'),
+    end: atOffset(0, '11', '30'),
     status: 'confirmed',
   },
   {
-    id: 'b-today-003',
-    code: 'BKG-TODAY-003',
-    patientId: 'P-1003',
-    serviceId: 'massage-60',
-    serviceName: 'Massage',
-    serviceDurationMinutes: 60,
-    resource: 'Room 3',
-    start: todayAt('14', '00'),
-    end: todayAt('15', '00'),
-    status: 'confirmed',
-    notes: 'Follow-up massage appointment.',
-  },
-  {
-    id: 'b-today-live-004',
-    code: 'BKG-TODAY-LIVE-004',
-    patientId: 'P-1005',
-    serviceId: 'acu-45',
+    id: 'b-tom-live-003',
+    practitionerId: TOM,
+    code: 'BKG-TOM-LIVE-003',
+    patientId: 'P-T-1004',
+    serviceId: 'tom-acu-45',
     serviceName: 'Acupuncture',
     serviceDurationMinutes: 45,
     resource: 'Room 1',
@@ -83,78 +68,83 @@ export const BOOKINGS: Booking[] = [
     notes: 'Test booking that should be ready to start or in progress right away.',
   },
   {
-    id: 'b-upcoming-101',
-    code: 'BKG-UP-101',
-    patientId: 'P-1004',
-    serviceId: 'acu-45',
-    serviceName: 'Acupuncture',
-    serviceDurationMinutes: 45,
-    resource: 'Room 1',
-    start: dayOffsetAt(1, '09', '30'),
-    end: dayOffsetAt(1, '10', '15'),
+    id: 'b-tom-upcoming-101',
+    practitionerId: TOM,
+    code: 'BKG-TOM-UP-101',
+    patientId: 'P-T-1003',
+    serviceId: 'tom-massage-60',
+    serviceName: 'Massage',
+    serviceDurationMinutes: 60,
+    resource: 'Room 3',
+    start: atOffset(1, '14', '00'),
+    end: atOffset(1, '15', '00'),
     status: 'confirmed',
   },
   {
-    id: 'b-upcoming-102',
-    code: 'BKG-UP-102',
-    patientId: 'P-1005',
-    serviceId: 'acu-60',
+    id: 'b-tom-past-201',
+    practitionerId: TOM,
+    code: 'BKG-TOM-PAST-201',
+    patientId: 'P-T-1002',
+    serviceId: 'tom-acu-60',
     serviceName: 'Acupuncture',
     serviceDurationMinutes: 60,
     resource: 'Room 2',
-    start: dayOffsetAt(2, '16', '00'),
-    end: dayOffsetAt(2, '17', '00'),
-    status: 'confirmed',
-    notes: 'Follow-up session.',
-  },
-  {
-    id: 'b-upcoming-103',
-    code: 'BKG-UP-103',
-    patientId: 'P-1001',
-    serviceId: 'acu-30',
-    serviceName: 'Acupuncture',
-    serviceDurationMinutes: 30,
-    resource: 'Room 1',
-    start: dayOffsetAt(5, '10', '00'),
-    end: dayOffsetAt(5, '10', '30'),
-    status: 'confirmed',
-  },
-  {
-    id: 'b-past-201',
-    code: 'BKG-PAST-201',
-    patientId: 'P-1002',
-    serviceId: 'acu-60',
-    serviceName: 'Acupuncture',
-    serviceDurationMinutes: 60,
-    resource: 'Room 2',
-    start: dayOffsetAt(-1, '09', '00'),
-    end: dayOffsetAt(-1, '10', '00'),
+    start: atOffset(-1, '09', '00'),
+    end: atOffset(-1, '10', '00'),
     status: 'completed',
     notes: 'Completed yesterday.',
   },
   {
-    id: 'b-past-202',
-    code: 'BKG-PAST-202',
-    patientId: 'P-1003',
-    serviceId: 'massage-60',
-    serviceName: 'Massage',
+    id: 'b-keita-today-001',
+    practitionerId: KEITA,
+    code: 'BKG-KEI-001',
+    patientId: 'P-K-2001',
+    serviceId: 'keita-acu-60',
+    serviceName: 'Acupuncture',
     serviceDurationMinutes: 60,
-    resource: 'Room 3',
-    start: dayOffsetAt(-3, '12', '00'),
-    end: dayOffsetAt(-3, '13', '00'),
-    status: 'cancelled',
-    notes: 'Cancelled by patient.',
+    resource: 'Room 2',
+    start: atOffset(0, '10', '30'),
+    end: atOffset(0, '11', '30'),
+    status: 'confirmed',
+    notes: 'Shoulder tension follow-up.',
   },
   {
-    id: 'b-past-203',
-    code: 'BKG-PAST-203',
-    patientId: 'P-1004',
-    serviceId: 'acu-45',
+    id: 'b-keita-today-002',
+    practitionerId: KEITA,
+    code: 'BKG-KEI-002',
+    patientId: 'P-K-2002',
+    serviceId: 'keita-cupping-30',
+    serviceName: 'Cupping',
+    serviceDurationMinutes: 30,
+    resource: 'Room 1',
+    start: atOffset(0, '13', '00'),
+    end: atOffset(0, '13', '30'),
+    status: 'confirmed',
+  },
+  {
+    id: 'b-keita-upcoming-101',
+    practitionerId: KEITA,
+    code: 'BKG-KEI-UP-101',
+    patientId: 'P-K-2003',
+    serviceId: 'keita-acu-45',
     serviceName: 'Acupuncture',
     serviceDurationMinutes: 45,
+    resource: 'Room 3',
+    start: atOffset(2, '16', '00'),
+    end: atOffset(2, '16', '45'),
+    status: 'confirmed',
+  },
+  {
+    id: 'b-keita-past-201',
+    practitionerId: KEITA,
+    code: 'BKG-KEI-PAST-201',
+    patientId: 'P-K-2004',
+    serviceId: 'keita-acu-60',
+    serviceName: 'Acupuncture',
+    serviceDurationMinutes: 60,
     resource: 'Room 1',
-    start: dayOffsetAt(-7, '15', '00'),
-    end: dayOffsetAt(-7, '15', '45'),
+    start: atOffset(-2, '15', '00'),
+    end: atOffset(-2, '16', '00'),
     status: 'no-show',
   },
 ]

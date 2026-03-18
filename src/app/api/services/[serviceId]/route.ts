@@ -2,14 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { servicesStore } from '@/data/servicesStore'
 import type { Service } from '@/models/service'
+import { getPractitionerIdFromRequest } from '@/lib/practitioners'
 
 type RouteParams = {
   params: Promise<{ serviceId: string }>
 }
 
-export async function GET(_req: NextRequest, { params }: RouteParams) {
+export async function GET(req: NextRequest, { params }: RouteParams) {
+  const practitionerId = getPractitionerIdFromRequest(req)
   const { serviceId } = await params
-  const service = servicesStore.find(item => item.id === serviceId)
+  const service = servicesStore.find(item => item.id === serviceId && item.practitionerId === practitionerId)
 
   if (!service) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
@@ -19,8 +21,9 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
 }
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
+  const practitionerId = getPractitionerIdFromRequest(req)
   const { serviceId } = await params
-  const index = servicesStore.findIndex(item => item.id === serviceId)
+  const index = servicesStore.findIndex(item => item.id === serviceId && item.practitionerId === practitionerId)
 
   if (index === -1) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
@@ -42,6 +45,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const duplicate = servicesStore.find(
     service =>
       service.id !== serviceId &&
+      service.practitionerId === practitionerId &&
       service.name.trim().toLowerCase() === nextName.toLowerCase() &&
       service.durationMinutes === nextDurationMinutes,
   )
@@ -56,6 +60,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const updated: Service = {
     ...current,
     ...body,
+    practitionerId,
     name: nextName,
     durationMinutes: nextDurationMinutes,
     description: typeof body.description === 'string' ? body.description.trim() || undefined : current.description,
@@ -66,9 +71,10 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   return NextResponse.json(updated)
 }
 
-export async function DELETE(_req: NextRequest, { params }: RouteParams) {
+export async function DELETE(req: NextRequest, { params }: RouteParams) {
+  const practitionerId = getPractitionerIdFromRequest(req)
   const { serviceId } = await params
-  const index = servicesStore.findIndex(item => item.id === serviceId)
+  const index = servicesStore.findIndex(item => item.id === serviceId && item.practitionerId === practitionerId)
 
   if (index === -1) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })

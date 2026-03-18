@@ -31,6 +31,8 @@ import {
   CalendarDaysIcon,
   ClipboardDocumentCheckIcon,
   WrenchScrewdriverIcon,
+  SparklesIcon,
+  UserCircleIcon,
 } from '@heroicons/react/24/outline'
 import { ChevronDownIcon, MagnifyingGlassIcon } from '@heroicons/react/20/solid'
 
@@ -39,7 +41,8 @@ import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
 
 import { TasksMenu } from '@/components/tasks/TasksMenu'
 import { SessionDialog } from '@/components/sessions/SessionDialog'
-import { PATIENTS } from '@/data/patients'
+import { usePatients } from '@/hooks/usePatients'
+import { PractitionerProvider, usePractitioner } from '@/components/layout/PractitionerContext'
 import type { Booking } from '@/models/booking'
 import { nameMap } from '@/lib/patients/selectors'
 import { emitBookingsChanged } from '@/lib/booking-events'
@@ -73,6 +76,16 @@ function classNames(...classes: (string | false | null | undefined)[]) {
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <PractitionerProvider>
+      <DashboardShell>{children}</DashboardShell>
+    </PractitionerProvider>
+  )
+}
+
+function DashboardShell({ children }: { children: React.ReactNode }) {
+  const { currentPractitioner, practitioners, setPractitionerId } = usePractitioner()
+  const { patients } = usePatients()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pathname = usePathname()
   const showRightPanel = [
@@ -80,13 +93,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   '/dashboard/sessions',
   '/dashboard/bookings',
   '/dashboard/services',
+  '/dashboard/calendar',
 ].includes(pathname)
   const [rightPanelContent, setRightPanelContent] = useState<ReactNode | null>(null)
 
   // Tasks -> create session dialog (global, so you can create notes from anywhere)
   const [taskSessionOpen, setTaskSessionOpen] = useState(false)
   const [taskBooking, setTaskBooking] = useState<Booking | null>(null)
-  const names = useMemo(() => nameMap(PATIENTS), [])
+  const names = useMemo(() => nameMap(patients), [patients])
 
   function openSessionForBooking(b: Booking) {
     setTaskBooking(b)
@@ -326,30 +340,57 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <MenuButton className="relative flex items-center rounded-md p-0.5 hover:bg-brand-300/10 focus:outline-none focus:ring-2 focus:ring-brand-600">
                     <span className="absolute -inset-1.5" />
                     <span className="sr-only">Open user menu</span>
-                    <img
-                      alt=""
-                      src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-                      className="size-8 rounded-full bg-canvas outline -outline-offset-1 outline-ink/10"
-                    />
+                    {currentPractitioner.avatarUrl ? (
+                      <img
+                        alt={currentPractitioner.name}
+                        src={currentPractitioner.avatarUrl}
+                        className="size-8 rounded-full bg-canvas outline -outline-offset-1 outline-ink/10"
+                      />
+                    ) : currentPractitioner.icon === 'sparkles' ? (
+                      <span className="flex size-8 items-center justify-center rounded-full bg-brand-700 text-surface outline -outline-offset-1 outline-ink/10">
+                        <SparklesIcon className="size-5" />
+                      </span>
+                    ) : (
+                      <UserCircleIcon className="size-8 text-brand-700" />
+                    )}
                     <span className="hidden lg:flex lg:items-center">
                       <span aria-hidden="true" className="ml-4 text-sm/6 font-semibold text-ink">
-                        Tom Cook
+                        {currentPractitioner.name}
                       </span>
                       <ChevronDownIcon aria-hidden="true" className="ml-2 size-5 text-ink/50" />
                     </span>
                   </MenuButton>
                   <MenuItems
                     transition
-                    className="absolute right-0 z-50 mt-2.5 w-36 origin-top-right rounded-md bg-surface py-2 shadow-lg outline-1 outline-ink/10 transition data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in"
+                    className="absolute right-0 z-50 mt-2.5 w-64 origin-top-right rounded-xl bg-surface py-2 shadow-lg outline-1 outline-ink/10 transition data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in"
                   >
-                    {userNavigation.map((item) => (
-                      <MenuItem key={item.name}>
-                        <a
-                          href={item.href}
-                          className="block px-3 py-1 text-sm/6 text-ink data-focus:bg-brand-300/10 data-focus:outline-hidden"
+                    <div className="px-3 pb-2 pt-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">Demo practitioners</p>
+                    </div>
+                    {practitioners.map((practitioner) => (
+                      <MenuItem key={practitioner.id}>
+                        <button
+                          type="button"
+                          onClick={() => setPractitionerId(practitioner.id)}
+                          className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-ink data-focus:bg-brand-300/10 data-focus:outline-hidden"
                         >
-                          {item.name}
-                        </a>
+                          {practitioner.avatarUrl ? (
+                            <img alt={practitioner.name} src={practitioner.avatarUrl} className="size-9 rounded-full bg-canvas" />
+                          ) : practitioner.icon === 'sparkles' ? (
+                            <span className="flex size-9 items-center justify-center rounded-full bg-brand-700 text-surface">
+                              <SparklesIcon className="size-5" />
+                            </span>
+                          ) : (
+                            <UserCircleIcon className="size-9 text-brand-700" />
+                          )}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-semibold">{practitioner.name}</span>
+                            <span className="block truncate text-xs text-ink/60">{practitioner.email}</span>
+                          </span>
+                          {practitioner.id === currentPractitioner.id && (
+                            <span className="rounded-full bg-brand-300/20 px-2 py-1 text-[11px] font-semibold text-brand-700">Active</span>
+                          )}
+                        </button>
                       </MenuItem>
                     ))}
                   </MenuItems>

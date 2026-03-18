@@ -1,8 +1,9 @@
-// src/app/api/patients/[patientId]/bookings/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { BOOKINGS } from '@/data/bookings'
 import type { Booking } from '@/models/booking'
-import { findServiceById } from '@/data/servicesStore'
+import { findServiceByIdForPractitioner } from '@/data/servicesStore'
+import { getPractitionerIdFromRequest, patientBelongsToPractitioner } from '@/lib/practitioners'
+import { patientsStore } from '@/data/patientsStore'
 
 type CreateBookingBody = {
   start: string
@@ -16,59 +17,42 @@ export async function POST(
   req: NextRequest,
   context: { params: Promise<{ patientId: string }> },
 ) {
+  const practitionerId = getPractitionerIdFromRequest(req)
   const { patientId } = await context.params
 
-  if (!patientId) {
-    return NextResponse.json(
-      { error: 'Missing patientId in URL' },
-      { status: 400 },
-    )
+  const patient = patientsStore.find(item => item.id === patientId)
+  if (!patient || !patientBelongsToPractitioner(patient, practitionerId)) {
+    return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }
 
   const body = (await req.json()) as Partial<CreateBookingBody>
 
   if (!body.start || !body.end || !body.serviceId) {
-    return NextResponse.json(
-      { error: 'start, end and serviceId are required' },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: 'start, end and serviceId are required' }, { status: 400 })
   }
 
   const start = new Date(body.start)
   const end = new Date(body.end)
 
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-    return NextResponse.json(
-      { error: 'Invalid start or end datetime' },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: 'Invalid start or end datetime' }, { status: 400 })
   }
 
   if (end <= start) {
-    return NextResponse.json(
-      { error: 'End time must be after start time' },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 })
   }
 
-  const svc = findServiceById(body.serviceId)
+  const svc = findServiceByIdForPractitioner(body.serviceId, practitionerId)
   if (!svc) {
-    return NextResponse.json(
-      { error: 'Unknown serviceId' },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: 'Unknown serviceId' }, { status: 400 })
   }
 
   const id = crypto.randomUUID()
-  const code = `BKG-${start.getFullYear()}${String(
-    start.getMonth() + 1,
-  ).padStart(2, '0')}${String(start.getDate()).padStart(2, '0')}-${id.slice(
-    0,
-    4,
-  )}`
+  const code = `BKG-${practitionerId === 'prac-keita-smith' ? 'KEI' : 'TOM'}-${id.slice(0, 4).toUpperCase()}`
 
   const newBooking: Booking = {
     id,
+    practitionerId,
     code,
     patientId,
     serviceId: svc.id,

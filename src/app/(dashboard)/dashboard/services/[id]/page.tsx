@@ -1,12 +1,16 @@
-import { servicesStore } from '@/data/servicesStore'
-import { notFound } from 'next/navigation'
+'use client'
+
+import { useParams } from 'next/navigation'
 import { ServiceDetailPanel } from '@/components/services/ServiceDetailPanel'
+import { useServices } from '@/hooks/useServices'
 
-export default async function ServiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
-  const service = servicesStore.find(item => item.id === id)
+export default function ServiceDetailPage() {
+  const { id } = useParams<{ id: string }>()
+  const { services, loading } = useServices()
+  const service = services.find(item => item.id === id)
 
-  if (!service) notFound()
+  if (loading) return <div className="p-4 text-sm">Loading…</div>
+  if (!service) return <div className="p-4 text-sm">Service not found.</div>
 
   return <ServiceDetailPanel service={service} />
 }

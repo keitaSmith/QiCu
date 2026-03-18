@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import type { FhirPatient } from '@/models/patient'
+import { usePractitioner } from '@/components/layout/PractitionerContext'
+import { withPractitionerHeaders } from '@/lib/practitioners'
 
-async function fetchPatients(): Promise<FhirPatient[]> {
-  const res = await fetch('/api/patients', { cache: 'no-store' })
+async function fetchPatients(practitionerId: string): Promise<FhirPatient[]> {
+  const res = await fetch('/api/patients', {
+    cache: 'no-store',
+    headers: withPractitionerHeaders(practitionerId),
+  })
   if (!res.ok) throw new Error('Failed to load patients')
   return res.json()
 }
 
-async function createPatient(payload: FhirPatient): Promise<FhirPatient> {
+async function createPatient(payload: FhirPatient, practitionerId: string): Promise<FhirPatient> {
   const res = await fetch('/api/patients', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: withPractitionerHeaders(practitionerId, { 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   })
 
@@ -26,10 +31,11 @@ async function createPatient(payload: FhirPatient): Promise<FhirPatient> {
 async function patchPatient(
   patientId: string,
   payload: Partial<FhirPatient>,
+  practitionerId: string,
 ): Promise<FhirPatient> {
   const res = await fetch(`/api/patients/${encodeURIComponent(patientId)}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: withPractitionerHeaders(practitionerId, { 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   })
 
@@ -41,9 +47,10 @@ async function patchPatient(
   return res.json()
 }
 
-async function deletePatientRequest(patientId: string): Promise<void> {
+async function deletePatientRequest(patientId: string, practitionerId: string): Promise<void> {
   const res = await fetch(`/api/patients/${encodeURIComponent(patientId)}`, {
     method: 'DELETE',
+    headers: withPractitionerHeaders(practitionerId),
   })
 
   if (!res.ok) {
@@ -53,6 +60,7 @@ async function deletePatientRequest(patientId: string): Promise<void> {
 }
 
 export function usePatients() {
+  const { practitionerId } = usePractitioner()
   const [patients, setPatients] = useState<FhirPatient[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -61,7 +69,7 @@ export function usePatients() {
     try {
       setLoading(true)
       setError(null)
-      const items = await fetchPatients()
+      const items = await fetchPatients(practitionerId)
       setPatients(items)
       return items
     } catch (e: any) {
@@ -70,7 +78,7 @@ export function usePatients() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [practitionerId])
 
   useEffect(() => {
     refresh().catch(() => null)
@@ -92,7 +100,7 @@ export function usePatients() {
     async (payload: FhirPatient) => {
       try {
         setError(null)
-        const created = await createPatient(payload)
+        const created = await createPatient(payload, practitionerId)
         prependPatient(created)
         return created
       } catch (e: any) {
@@ -100,14 +108,14 @@ export function usePatients() {
         return null
       }
     },
-    [prependPatient],
+    [prependPatient, practitionerId],
   )
 
   const patchPatientById = useCallback(
     async (patientId: string, payload: Partial<FhirPatient>) => {
       try {
         setError(null)
-        const updated = await patchPatient(patientId, payload)
+        const updated = await patchPatient(patientId, payload, practitionerId)
         replacePatient(updated)
         return updated
       } catch (e: any) {
@@ -115,14 +123,14 @@ export function usePatients() {
         return null
       }
     },
-    [replacePatient],
+    [replacePatient, practitionerId],
   )
 
   const deletePatientById = useCallback(
     async (patientId: string) => {
       try {
         setError(null)
-        await deletePatientRequest(patientId)
+        await deletePatientRequest(patientId, practitionerId)
         removePatient(patientId)
         return true
       } catch (e: any) {
@@ -130,10 +138,11 @@ export function usePatients() {
         return false
       }
     },
-    [removePatient],
+    [removePatient, practitionerId],
   )
 
   return {
+    practitionerId,
     patients,
     setPatients,
     loading,

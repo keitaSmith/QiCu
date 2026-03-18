@@ -7,3 +7,11 @@ export function findServiceById(id: string | null | undefined): Service | undefi
   if (!id) return undefined
   return servicesStore.find(service => service.id === id)
 }
+
+export function findServiceByIdForPractitioner(
+  id: string | null | undefined,
+  practitionerId: string,
+): Service | undefined {
+  if (!id) return undefined
+  return servicesStore.find(service => service.id === id && service.practitionerId === practitionerId)
+}
