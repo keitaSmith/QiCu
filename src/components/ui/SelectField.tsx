@@ -38,6 +38,11 @@ export type SelectFieldProps<T extends string> = {
    */
   menuClassName?: string
   /**
+   * How option descriptions should be shown in the dropdown.
+   * default: inline
+   */
+  descriptionDisplay?: 'inline' | 'tooltip' | 'none'
+  /**
    * Custom render for the closed button display (e.g. flag-only)
    */
   renderDisplay?: (option: SelectOption<T> | null) => ReactNode
@@ -56,6 +61,7 @@ export default function SelectField<T extends string>({
   className,
   variant = 'default',
   menuClassName,
+  descriptionDisplay = 'inline',
   renderDisplay,
 }: SelectFieldProps<T>) {
   const selectedOption = options.find(opt => opt.value === value) ?? null
@@ -72,6 +78,7 @@ export default function SelectField<T extends string>({
       <Listbox value={normalizedValue} onChange={onChange} disabled={disabled}>
         <div className="relative mt-0.5">
           <ListboxButton
+            title={descriptionDisplay === 'tooltip' ? selectedOption?.description : undefined}
             className={cn(
               'flex w-full items-center justify-between bg-transparent px-0 text-left text-sm',
               variant === 'default' ? 'py-2' : 'py-0',
@@ -112,6 +119,7 @@ export default function SelectField<T extends string>({
                 <ListboxOption
                   key={option.value}
                   value={option.value}
+                  title={descriptionDisplay === 'tooltip' ? option.description : undefined}
                   className={({ active }) =>
                     cn(
                       'relative flex cursor-pointer select-none items-center py-2 pl-3 pr-9 text-sm',
@@ -134,7 +142,7 @@ export default function SelectField<T extends string>({
                       >
                         {option.label}
                       </span>
-                      {option.description && (
+                      {descriptionDisplay === 'inline' && option.description && (
                         <span className="ml-2 text-xs text-ink/60">
                           {option.description}
                         </span>

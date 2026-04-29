@@ -21,6 +21,15 @@ export type BookingImportPreviewRow = ImportedBookingRow & {
   matchedServiceId?: string
   willCreatePatient?: boolean
   willCreateService?: boolean
+  externalSource?: 'google'
+  externalCalendarId?: string
+  externalEventId?: string
+  sourceSummary?: string
+  sourceUpdatedAt?: string
+  importClassification?: 'booking-candidate' | 'blocked-time-candidate' | 'ignore'
+  importConfidence?: 'high' | 'review' | 'not-suitable'
+  duplicateStatus?: 'none' | 'possible' | 'existing-import'
+  reviewReasons?: string[]
 }
 
 const STATUS_VALUES: BookingStatus[] = [

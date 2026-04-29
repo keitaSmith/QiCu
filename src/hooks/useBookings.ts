@@ -13,6 +13,11 @@ type CreateBookingInput = {
   resource?: string | null
   notes?: string | null
   status?: BookingStatus
+  externalSource?: Booking['externalSource']
+  externalCalendarId?: string | null
+  externalEventId?: string | null
+  externalSyncStatus?: Booking['externalSyncStatus']
+  skipGoogleWriteback?: boolean
 }
 
 type PatchBookingInput = {
@@ -22,6 +27,7 @@ type PatchBookingInput = {
   resource?: string | null
   notes?: string | null
   status?: BookingStatus
+  skipGoogleWriteback?: boolean
 }
 
 async function fetchBookings(practitionerId: string): Promise<Booking[]> {

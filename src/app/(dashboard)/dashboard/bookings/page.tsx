@@ -39,6 +39,7 @@ import { TableSkeleton } from '@/components/ui/TableSkeleton'
 import { CardListSkeleton } from '@/components/ui/CardListSkeleton'
 import { useSnackbar } from '@/components/ui/Snackbar'
 import { buildBookingsExportCsv, normalizePatientLookupKey, normalizeServiceLookupKey, type BookingImportPreviewRow } from '@/lib/bookingsImportExport'
+import { withPractitionerHeaders } from '@/lib/practitioners'
 import * as PatientModel from '@/models/patient'
 import { toCoreView } from '@/models/patient.coreView'
 
@@ -84,6 +85,7 @@ export default function BookingsPage() {
   const { showSnackbar } = useSnackbar()
 
   const {
+    practitionerId,
     bookings,
     createBookingRecord,
     replaceBooking,
@@ -109,6 +111,7 @@ export default function BookingsPage() {
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false)
   const [sessionBooking, setSessionBooking] = useState<Booking | null>(null)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [syncingGoogle, setSyncingGoogle] = useState(false)
 
   const statusOptions: FilterOption<StatusFilter>[] = [
     { value: 'all', label: 'All statuses' },
@@ -404,6 +407,33 @@ export default function BookingsPage() {
     showSnackbar({ variant: 'success', message: 'Bookings exported as CSV.' })
   }
 
+  async function handleGoogleReconcile() {
+    try {
+      setSyncingGoogle(true)
+      const res = await fetch('/api/integrations/google/reconcile', {
+        method: 'POST',
+        headers: withPractitionerHeaders(practitionerId, { 'Content-Type': 'application/json' }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(data?.error ?? 'Failed to sync linked Google bookings.')
+      }
+
+      await refreshBookings()
+      showSnackbar({
+        variant: 'success',
+        message:
+          data?.linked > 0
+            ? `Google sync complete. ${data.updated ?? 0} updated, ${data.cancelled ?? 0} cancelled, ${data.unchanged ?? 0} unchanged.`
+            : 'No linked Google bookings were found.',
+      })
+    } catch (error: any) {
+      showSnackbar({ variant: 'error', message: error?.message ?? 'Failed to sync linked Google bookings.' })
+    } finally {
+      setSyncingGoogle(false)
+    }
+  }
+
   async function handleImportRows(rows: BookingImportPreviewRow[]) {
     let importedCount = 0
     let createdPatientCount = 0
@@ -487,6 +517,11 @@ export default function BookingsPage() {
         resource: row.resource || null,
         notes: row.notes || null,
         status: row.status,
+        externalSource: row.externalSource,
+        externalCalendarId: row.externalCalendarId || null,
+        externalEventId: row.externalEventId || null,
+        externalSyncStatus: row.externalEventId ? 'imported' : null,
+        skipGoogleWriteback: Boolean(row.externalEventId),
       })
 
       if (created) importedCount += 1
@@ -657,6 +692,15 @@ export default function BookingsPage() {
             className="rounded-lg border border-brand-300/40 bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-brand-300/10 focus:outline-none"
           >
             Import
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void handleGoogleReconcile()}
+            disabled={syncingGoogle}
+            className="rounded-lg border border-brand-300/40 bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-brand-300/10 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {syncingGoogle ? 'Syncing…' : 'Sync Google'}
           </button>
 
           <button

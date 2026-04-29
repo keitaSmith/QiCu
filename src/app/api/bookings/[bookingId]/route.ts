@@ -4,6 +4,7 @@ import type { BookingStatus } from '@/models/booking'
 import { findServiceByIdForPractitioner } from '@/data/servicesStore'
 import { applyBookingStatus } from '@/lib/bookingStatus'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { syncGoogleOnBookingDelete, syncGoogleOnBookingUpdate } from '@/lib/google/sync'
 
 type UpdateBookingBody = {
   start?: string
@@ -12,6 +13,7 @@ type UpdateBookingBody = {
   resource?: string | null
   notes?: string | null
   status?: BookingStatus
+  skipGoogleWriteback?: boolean
 }
 
 export async function PATCH(
@@ -73,6 +75,15 @@ export async function PATCH(
     Object.assign(booking, updated)
   }
 
+  try {
+    await syncGoogleOnBookingUpdate(booking, req, {
+      skip: body.skipGoogleWriteback === true,
+    })
+  } catch (error) {
+    console.error('Google Calendar booking update sync failed', error)
+    booking.externalSyncStatus = 'error'
+  }
+
   return NextResponse.json(booking, { status: 200 })
 }
 
@@ -87,6 +98,12 @@ export async function DELETE(
 
   if (index === -1) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  try {
+    await syncGoogleOnBookingDelete(BOOKINGS[index], req)
+  } catch (error) {
+    console.error('Google Calendar booking delete sync failed', error)
   }
 
   BOOKINGS.splice(index, 1)

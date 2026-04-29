@@ -53,6 +53,13 @@ export type Booking = {
   /** Optional link to a created session (Phase 2/3) */
   sessionId?: string | null
 
+  /** External calendar linkage (used for Google Calendar import/sync) */
+  externalSource?: 'google' | null
+  externalCalendarId?: string | null
+  externalEventId?: string | null
+  externalSyncStatus?: 'imported' | 'synced' | 'pending' | 'error' | null
+  externalLastSyncedAt?: string
+
   /** Last time the booking status changed */
   statusUpdatedAt?: string
 }

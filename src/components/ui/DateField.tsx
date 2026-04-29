@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState,useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CalendarDaysIcon,
   ChevronLeftIcon,
@@ -15,7 +15,10 @@ type DateFieldProps = {
   onChange: (value: string) => void
   required?: boolean
   helperText?: string
-  error?: string   
+  error?: string
+  allowFuture?: boolean
+  minYear?: number
+  maxYear?: number
 }
 
 function parseDate(value: string | null) {
@@ -81,6 +84,17 @@ type Segments = {
   year: string
 }
 
+function clampYearRange(minYear: number | undefined, maxYear: number | undefined, fallbackYear: number) {
+  const safeMinYear = minYear ?? fallbackYear - 110
+  const safeMaxYear = maxYear ?? fallbackYear
+
+  if (safeMinYear <= safeMaxYear) {
+    return { minYear: safeMinYear, maxYear: safeMaxYear }
+  }
+
+  return { minYear: safeMaxYear, maxYear: safeMinYear }
+}
+
 function isoToSegments(iso: string | null | undefined): Segments {
   if (!iso || iso.length !== 10) return { day: '', month: '', year: '' }
   const [y, m, d] = iso.split('-')
@@ -91,31 +105,32 @@ function isoToSegments(iso: string | null | undefined): Segments {
   }
 }
 
-function segmentsToIso(segments: Segments): string | '' {
+function segmentsToIso(
+  segments: Segments,
+  { allowFuture = false, minYear, maxYear }: { allowFuture?: boolean; minYear?: number; maxYear?: number } = {},
+): string | '' {
   const { day, month, year } = segments
 
-  // nothing entered
   if (!day && !month && !year) return ''
 
-  // must be fully filled
   if (day.length !== 2 || month.length !== 2 || year.length !== 4) return ''
 
   const iso = `${year}-${month}-${day}`
   const date = parseDate(iso)
-  if (!date) return '' // invalid calendar date like 31-02
+  if (!date) return ''
 
-  // DOB-specific sanity checks
   const today = new Date()
-  const minYear = today.getFullYear() - 110 // e.g. 1915 if this year is 2025
+  const resolvedRange = clampYearRange(minYear, maxYear, today.getFullYear())
 
-  // not in the future
-  if (date > today) return ''
+  if (!allowFuture && date > today) return ''
 
-  // not older than 110 years
-  if (date.getFullYear() < minYear) return ''
+  if (date.getFullYear() < resolvedRange.minYear || date.getFullYear() > resolvedRange.maxYear) {
+    return ''
+  }
 
   return iso
 }
+
 
 
 export function DateField({
@@ -125,7 +140,10 @@ export function DateField({
   onChange,
   required,
   helperText,
-  error, 
+  error,
+  allowFuture = false,
+  minYear,
+  maxYear,
 }: DateFieldProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [view, setView] = useState<'days' | 'monthYear'>('days')
@@ -134,14 +152,10 @@ export function DateField({
 
 
   const [segments, setSegments] = useState<Segments>(() => isoToSegments(value))
-  const currentIso = segmentsToIso(segments)
-const hasAnyDigits = !!(segments.day || segments.month || segments.year)
-const isComplete = segments.day.length === 2 && segments.month.length === 2 && segments.year.length === 4
-const isInvalid = isComplete && hasAnyDigits && !currentIso
 
-const lastEmittedRef = useRef<string | null>(null)  
+  const lastEmittedRef = useRef<string | null>(null)
 useEffect(() => {
-  const iso = segmentsToIso(segments)
+  const iso = segmentsToIso(segments, { allowFuture, minYear, maxYear })
   // only notify parent if it actually changed
   if (!iso) return
 
@@ -150,7 +164,7 @@ useEffect(() => {
 
   lastEmittedRef.current = iso
   onChange(iso)
-}, [segments, onChange])
+}, [allowFuture, maxYear, minYear, onChange, segments])
 
 const containerRef = useRef<HTMLDivElement | null>(null)
 
@@ -207,9 +221,10 @@ const containerRef = useRef<HTMLDivElement | null>(null)
 
   const years = useMemo(() => {
     const current = today.getFullYear()
-    const maxAge = 110
-    return Array.from({ length: maxAge + 1 }, (_, i) => current - i)
-  }, [today])
+    const resolvedRange = clampYearRange(minYear, maxYear, current)
+    const totalYears = resolvedRange.maxYear - resolvedRange.minYear + 1
+    return Array.from({ length: totalYears }, (_, i) => resolvedRange.maxYear - i)
+  }, [maxYear, minYear, today])
 
   // update a segment & propagate to parent if complete
   function updateSegments(update: (prev: Segments) => Segments) {

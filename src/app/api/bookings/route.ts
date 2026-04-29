@@ -8,6 +8,7 @@ import {
   getPatientPractitionerId,
 } from '@/lib/practitioners'
 import { patientsStore } from '@/data/patientsStore'
+import { syncGoogleOnBookingCreate } from '@/lib/google/sync'
 
 type CreateBookingBody = {
   patientId?: string
@@ -17,6 +18,11 @@ type CreateBookingBody = {
   resource?: string | null
   notes?: string | null
   status?: Booking['status']
+  externalSource?: Booking['externalSource']
+  externalCalendarId?: string | null
+  externalEventId?: string | null
+  externalSyncStatus?: Booking['externalSyncStatus']
+  skipGoogleWriteback?: boolean
 }
 
 function generateBookingCode(practitionerId: string) {
@@ -80,9 +86,22 @@ export async function POST(req: NextRequest) {
     resource: body.resource?.trim() || undefined,
     notes: body.notes?.trim() || undefined,
     status: body.status ?? 'confirmed',
+    externalSource: body.externalSource ?? null,
+    externalCalendarId: body.externalCalendarId?.trim() || null,
+    externalEventId: body.externalEventId?.trim() || null,
+    externalSyncStatus: body.externalSyncStatus ?? null,
   }
 
   BOOKINGS.unshift(created)
+
+  try {
+    await syncGoogleOnBookingCreate(created, req, {
+      skip: body.skipGoogleWriteback === true || Boolean(body.externalEventId),
+    })
+  } catch (error) {
+    console.error('Google Calendar booking create sync failed', error)
+    created.externalSyncStatus = 'error'
+  }
 
   return NextResponse.json(created, { status: 201 })
 }
