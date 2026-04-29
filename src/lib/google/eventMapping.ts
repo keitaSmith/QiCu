@@ -26,7 +26,7 @@ function normalizeLooseText(value: string | undefined | null) {
     .trim()
 }
 
-function tryReadDelimitedSummary(summary: string) {
+export function parseGoogleEventSummary(summary: string) {
   const separators = [' — ', ' - ', ' | ', ': ']
 
   for (const separator of separators) {
@@ -54,6 +54,22 @@ function readDescriptionLines(description: string | undefined) {
 function findTaggedValue(lines: string[], patterns: RegExp[]) {
   const matchedLine = lines.find(line => patterns.some(pattern => pattern.test(line)))
   return matchedLine?.replace(/^[^:]+:\s*/i, '').trim() || ''
+}
+
+export function extractGoogleEventCandidates(summary: string, description: string | undefined) {
+  const descriptionLines = readDescriptionLines(description)
+  const delimitedSummary = parseGoogleEventSummary(summary)
+
+  return {
+    patientName:
+      findTaggedValue(descriptionLines, [/^patient\s*:/i, /^client\s*:/i]) ||
+      delimitedSummary?.patientName ||
+      '',
+    serviceName:
+      findTaggedValue(descriptionLines, [/^service\s*:/i, /^appointment\s*:/i, /^type\s*:/i]) ||
+      delimitedSummary?.serviceName ||
+      '',
+  }
 }
 
 const GENERIC_NON_BOOKING_KEYWORDS = [
@@ -100,6 +116,34 @@ function getEventStartIso(event: GoogleCalendarEvent) {
 function getEventEndIso(event: GoogleCalendarEvent) {
   if (event.end?.dateTime) return new Date(event.end.dateTime).toISOString()
   return ''
+}
+
+export function detectGoogleBookingDuplicate(
+  eventId: string,
+  start: string,
+  end: string,
+  serviceName: string,
+  existingBookings: Booking[],
+) {
+  const existingImport = existingBookings.find(booking => booking.externalEventId === eventId)
+  if (existingImport) {
+    return {
+      duplicateStatus: 'existing-import' as const,
+      booking: existingImport,
+    }
+  }
+
+  const probableDuplicate = existingBookings.find(
+    booking =>
+      booking.start === start &&
+      booking.end === end &&
+      normalizeServiceLookupKey(booking.serviceName) === normalizeServiceLookupKey(serviceName),
+  )
+
+  return {
+    duplicateStatus: probableDuplicate ? 'possible' as const : 'none' as const,
+    booking: probableDuplicate,
+  }
 }
 
 function findExactPatientMatch(candidate: string, patients: PatientCoreView[]) {
@@ -155,6 +199,46 @@ function filterRowsForMode(
   }
 }
 
+export function classifyGoogleImportCandidate({
+  summary,
+  hasPatientMatch,
+  hasServiceMatch,
+  duplicateStatus,
+  errors,
+  shouldIgnore = false,
+}: {
+  summary: string
+  hasPatientMatch: boolean
+  hasServiceMatch: boolean
+  duplicateStatus: GoogleBookingImportPreviewRow['duplicateStatus']
+  errors: string[]
+  shouldIgnore?: boolean
+}) {
+  const reviewReasons: string[] = []
+  let importClassification: GoogleImportClassification = 'booking-candidate'
+  let importConfidence: GoogleImportConfidence = errors.length > 0 ? 'not-suitable' : 'review'
+
+  if (shouldIgnore) {
+    importClassification = 'ignore'
+  } else if (!hasPatientMatch && !hasServiceMatch && looksLikeNonBookingSummary(summary)) {
+    importClassification = 'blocked-time-candidate'
+    importConfidence = 'not-suitable'
+    reviewReasons.push('Looks like blocked time')
+  } else if (hasPatientMatch && hasServiceMatch) {
+    importClassification = 'booking-candidate'
+    importConfidence = duplicateStatus === 'possible' ? 'review' : 'high'
+  } else {
+    if (!hasPatientMatch) reviewReasons.push('Review patient')
+    if (!hasServiceMatch) reviewReasons.push('Review service')
+  }
+
+  return {
+    importClassification,
+    importConfidence,
+    reviewReasons,
+  }
+}
+
 export function buildGoogleBookingImportPreview(
   events: GoogleCalendarEvent[],
   calendarId: string,
@@ -163,111 +247,74 @@ export function buildGoogleBookingImportPreview(
   existingBookings: Booking[],
   mode: GoogleImportMode = 'appointments-only',
 ): GoogleBookingImportPreviewRow[] {
-  const existingByExternalId = new Map(
-    existingBookings
-      .filter(booking => booking.externalEventId)
-      .map(booking => [booking.externalEventId ?? '', booking]),
-  )
-
   const builtRows = events.map<GoogleBookingImportPreviewRow>((event, index): GoogleBookingImportPreviewRow => {
     const summary = normalizeText(event.summary) || 'Untitled Google event'
-    const descriptionLines = readDescriptionLines(event.description)
-    const delimitedSummary = tryReadDelimitedSummary(summary)
-    const explicitPatient = findTaggedValue(descriptionLines, [/^patient\s*:/i, /^client\s*:/i])
-    const explicitService = findTaggedValue(descriptionLines, [/^service\s*:/i, /^appointment\s*:/i, /^type\s*:/i])
+    const candidates = extractGoogleEventCandidates(summary, event.description)
 
     const start = getEventStartIso(event)
     const end = getEventEndIso(event)
 
     const exactPatient =
-      findExactPatientMatch(explicitPatient, patients) ??
-      findExactPatientMatch(delimitedSummary?.patientName ?? '', patients) ??
+      findExactPatientMatch(candidates.patientName, patients) ??
       findExactPatientMatch(summary, patients) ??
       findContainedPatientMatch(summary, patients)
 
     const exactService = findServiceMatch(
-      [explicitService, delimitedSummary?.serviceName ?? ''].filter(Boolean),
+      [candidates.serviceName].filter(Boolean),
       summary,
       services,
     )
 
     const patientName =
       exactPatient?.name ??
-      (explicitPatient || delimitedSummary?.patientName || '')
+      candidates.patientName
     const serviceName =
       exactService?.name ??
-      (explicitService || delimitedSummary?.serviceName || '')
+      candidates.serviceName
     const matchedPatientId = exactPatient?.id
     const matchedServiceId = exactService?.id
-    const existingByEventId = existingByExternalId.get(event.id)
-    const probableDuplicate = existingBookings.find(
-      booking =>
-        booking.start === start &&
-        booking.end === end &&
-        normalizeServiceLookupKey(booking.serviceName) === normalizeServiceLookupKey(serviceName),
-    )
 
     const reviewReasons: string[] = []
     const errors: string[] = []
     const warnings: string[] = []
-    let importClassification: GoogleImportClassification = 'booking-candidate'
-    let importConfidence: GoogleImportConfidence = 'review'
+    let shouldIgnore = false
 
     if (event.status === 'cancelled') {
       errors.push('Already cancelled')
-      importClassification = 'ignore'
-      importConfidence = 'not-suitable'
+      shouldIgnore = true
     }
 
     if (isAllDayEvent(event)) {
       errors.push('All-day event')
-      importClassification = 'ignore'
-      importConfidence = 'not-suitable'
+      shouldIgnore = true
     }
 
     if (!start || !end) {
       errors.push('Missing time')
-      importConfidence = 'not-suitable'
     }
 
     if (start && end && new Date(end).getTime() <= new Date(start).getTime()) {
       errors.push('Invalid time')
-      importConfidence = 'not-suitable'
     }
 
-    let duplicateStatus: GoogleBookingImportPreviewRow['duplicateStatus'] = 'none'
-    if (existingByEventId) {
-      duplicateStatus = 'existing-import'
+    const duplicate = detectGoogleBookingDuplicate(event.id, start, end, serviceName, existingBookings)
+    const duplicateStatus = duplicate.duplicateStatus
+    if (duplicateStatus === 'existing-import') {
       errors.push('Already imported')
-      importConfidence = 'not-suitable'
-    } else if (probableDuplicate) {
-      duplicateStatus = 'possible'
-      warnings.push(`Possible duplicate of booking ${probableDuplicate.code}`)
-      reviewReasons.push(`Possible duplicate of booking ${probableDuplicate.code}`)
+    } else if (duplicate.booking) {
+      warnings.push(`Possible duplicate of booking ${duplicate.booking.code}`)
+      reviewReasons.push(`Possible duplicate of booking ${duplicate.booking.code}`)
     }
 
-    if (!exactPatient && !exactService && looksLikeNonBookingSummary(summary)) {
-      importClassification = 'blocked-time-candidate'
-      importConfidence = 'not-suitable'
-      reviewReasons.push('Looks like blocked time')
-    }
-
-    if (exactPatient && exactService) {
-      importClassification = 'booking-candidate'
-      importConfidence = duplicateStatus === 'possible' ? 'review' : 'high'
-    } else {
-      if (!exactPatient) {
-        reviewReasons.push('Review patient')
-      }
-      if (!exactService) {
-        reviewReasons.push('Review service')
-      }
-
-      if (importClassification !== 'blocked-time-candidate' && errors.length === 0) {
-        importClassification = 'booking-candidate'
-        importConfidence = 'review'
-      }
-    }
+    const classification = classifyGoogleImportCandidate({
+      summary,
+      hasPatientMatch: Boolean(exactPatient),
+      hasServiceMatch: Boolean(exactService),
+      duplicateStatus,
+      errors,
+      shouldIgnore,
+    })
+    reviewReasons.push(...classification.reviewReasons)
 
     if (patientName && !exactPatient) warnings.push('Review patient')
     if (serviceName && !exactService) warnings.push('Review service')
@@ -293,8 +340,8 @@ export function buildGoogleBookingImportPreview(
       externalCalendarId: calendarId,
       sourceSummary: summary,
       sourceUpdatedAt: event.updated,
-      importClassification,
-      importConfidence,
+      importClassification: classification.importClassification,
+      importConfidence: classification.importConfidence,
       duplicateStatus,
       reviewReasons,
     }
