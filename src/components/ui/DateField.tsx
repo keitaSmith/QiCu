@@ -380,7 +380,7 @@ const containerRef = useRef<HTMLDivElement | null>(null)
     setIsFocused(true)
   }}
   onBlur={() => setIsFocused(false)}
-  onMouseDown={e => {                      // 👈 add this block
+  onMouseDown={() => {
     // ensure the container itself gets focus
     if (containerRef.current) {
       containerRef.current.focus()

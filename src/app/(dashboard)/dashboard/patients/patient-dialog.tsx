@@ -22,13 +22,6 @@ const underlineInputClass = (hasError?: boolean) =>
     hasError ? 'border-rose-500 focus:border-rose-500' : 'border-brand-300/40 focus:border-brand-300',
   ].join(' ')
 
-const underlineSelectClass = (hasError?: boolean) =>
-  [
-    'w-full px-0 py-2 bg-transparent border-0 border-b text-sm',
-    'text-ink focus:ring-0 focus:outline-none transition-colors appearance-none',
-    hasError ? 'border-rose-500 focus:border-rose-500' : 'border-brand-300/40 focus:border-brand-300',
-  ].join(' ')
-
 const genderOptions: SelectOption<Gender>[] = [
   { value: 'male', label: 'Male' },
   { value: 'female', label: 'Female' },
@@ -36,10 +29,39 @@ const genderOptions: SelectOption<Gender>[] = [
   { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ]
 
-const inviteOptions: SelectOption<InviteMode>[] = [
-  { value: 'profileOnly', label: 'Create profile only' },
-  { value: 'profileAndInvite', label: 'Create + send invite' },
-]
+type ValidationIssue = {
+  path?: string | number | Array<string | number>
+  message?: string
+}
+
+const genderValues: readonly Gender[] = ['male', 'female', 'other', 'prefer_not_to_say']
+
+function isGender(value: unknown): value is Gender {
+  return typeof value === 'string' && genderValues.includes(value as Gender)
+}
+
+function readValidationIssues(error: unknown): ValidationIssue[] | null {
+  if (Array.isArray(error)) return error as ValidationIssue[]
+
+  if (error && typeof error === 'object' && 'issues' in error) {
+    const issues = (error as { issues?: unknown }).issues
+    if (Array.isArray(issues)) return issues as ValidationIssue[]
+  }
+
+  if (error instanceof Error) {
+    const message = error.message.trim()
+    if (message.startsWith('[') && message.endsWith(']')) {
+      try {
+        const parsed: unknown = JSON.parse(message)
+        if (Array.isArray(parsed)) return parsed as ValidationIssue[]
+      } catch {
+        return null
+      }
+    }
+  }
+
+  return null
+}
 
 export function PatientDialog({
   open,
@@ -65,7 +87,7 @@ export function PatientDialog({
   const [gender, setGender] = useState<Gender>('prefer_not_to_say')
 
 
-  const [error, setError] = useState<string | null>(null)
+  const [, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const isEdit = mode === 'edit'
@@ -82,7 +104,7 @@ export function PatientDialog({
           t => t.system === 'phone' && (t.use === 'mobile' || !t.use),
         )?.value ?? '',
       )
-      setGender((initialPatient.gender as any) ?? 'prefer_not_to_say')
+      setGender(isGender(initialPatient.gender) ? initialPatient.gender : 'prefer_not_to_say')
       setError(null)
     } else if (open && !isEdit) {
       
@@ -166,37 +188,12 @@ export function PatientDialog({
     setFieldErrors({})
     setError(null)
     onClose()
-    } catch (err: any) {
+    } catch (err: unknown) {
   // reset previous errors
   setFieldErrors({})
   setError(null)
 
-  let issues: any[] | null = null
-
-  // 1) Direct array
-  if (Array.isArray(err)) {
-    issues = err
-  }
-
-  // 2) Zod-style: { issues: [...] }
-  if (!issues && Array.isArray(err?.issues)) {
-    issues = err.issues
-  }
-
-  // 3) message is a JSON array
-  if (!issues && typeof err?.message === 'string') {
-    const msg = err.message.trim()
-    if (msg.startsWith('[') && msg.endsWith(']')) {
-      try {
-        const parsed = JSON.parse(msg)
-        if (Array.isArray(parsed)) {
-          issues = parsed
-        }
-      } catch {
-        // ignore
-      }
-    }
-  }
+  const issues = readValidationIssues(err)
 
   if (issues) {
     const nextFieldErrors: Record<string, string> = {}
@@ -251,7 +248,7 @@ export function PatientDialog({
   }
 
   // Generic fallback
-  if (typeof err?.message === 'string') {
+  if (err instanceof Error) {
     setError(err.message)
   } else {
     setError('Please check the form.')

@@ -9,6 +9,7 @@ import type { GoogleImportMode } from '@/lib/google/types'
 import { getGoogleIntegration } from '@/lib/google/store'
 import { patientBelongsToPractitioner, serviceBelongsToPractitioner, getPractitionerIdFromRequest } from '@/lib/practitioners'
 import { toCoreView } from '@/models/patient.coreView'
+import { getErrorMessage } from '@/lib/errors'
 
 function startOfTodayIso() {
   const now = new Date()
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
     )
 
     return NextResponse.json({ rows }, { status: 200 })
-  } catch (nextError: any) {
-    return NextResponse.json({ error: nextError?.message ?? 'Failed to preview Google events' }, { status: 400 })
+  } catch (nextError: unknown) {
+    return NextResponse.json({ error: getErrorMessage(nextError, 'Failed to preview Google events') }, { status: 400 })
   }
 }

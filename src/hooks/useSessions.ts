@@ -4,6 +4,7 @@ import type { Session } from '@/models/session'
 import { SESSIONS_CHANGED_EVENT, emitSessionsChanged } from '@/lib/session-events'
 import { usePractitioner } from '@/components/layout/PractitionerContext'
 import { withPractitionerHeaders } from '@/lib/practitioners'
+import { getErrorMessage } from '@/lib/errors'
 
 type SessionMutationInput = {
   startDateTime?: string
@@ -46,8 +47,8 @@ export function useSessions() {
       const items = await fetchSessions(practitionerId)
       setSessions(items)
       return items
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to load sessions')
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, 'Failed to load sessions'))
       return []
     } finally {
       setLoading(false)

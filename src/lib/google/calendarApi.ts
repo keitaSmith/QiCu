@@ -29,7 +29,7 @@ async function googleApiRequest<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const integration = await ensureFreshGoogleAccessToken(practitionerId, req)
+  const integration = await ensureFreshGoogleAccessToken(practitionerId)
   const res = await fetch(`https://www.googleapis.com${path}`, {
     ...init,
     headers: {
@@ -98,7 +98,7 @@ export async function getGoogleCalendarEvent(
   calendarId: string,
   eventId: string,
 ) {
-  const integration = await ensureFreshGoogleAccessToken(practitionerId, req)
+  const integration = await ensureFreshGoogleAccessToken(practitionerId)
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
     {
@@ -163,7 +163,7 @@ export async function deleteGoogleCalendarEvent(
   calendarId: string,
   eventId: string,
 ) {
-  const integration = await ensureFreshGoogleAccessToken(practitionerId, req)
+  const integration = await ensureFreshGoogleAccessToken(practitionerId)
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
     {

@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from 'react'
 
 import type { Service } from '@/models/service'
 import { useSnackbar } from '@/components/ui/Snackbar'
+import { getErrorMessage } from '@/lib/errors'
 
 type Props = {
   open: boolean
@@ -89,9 +90,9 @@ export function ServiceDialog({
       }
 
       onClose()
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err)
-      const message = err?.message ?? 'Failed to save service.'
+      const message = getErrorMessage(err, 'Failed to save service.')
       setError(message)
       showSnackbar({ variant: 'error', message })
     } finally {

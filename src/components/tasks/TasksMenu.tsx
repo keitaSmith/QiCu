@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import {
   ClipboardDocumentCheckIcon,
@@ -58,7 +57,6 @@ function taskMeta(kind: TaskKind) {
 }
 
 export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
-  const [open, setOpen] = useState(false)
   const { bookings, loading, error, refresh, updateBookingStatus } = useBookings()
 
   const tasks = useTasks(bookings)
@@ -78,10 +76,8 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
     <Menu as="div" className="relative">
       <MenuButton
         onClick={() => {
-          setOpen(true)
           refresh().catch(() => null)
         }}
-        onBlur={() => setOpen(false)}
         className="relative -m-2.5 rounded-md p-2.5 text-ink/60 hover:bg-brand-300/10 hover:text-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-600"
       >
         <span className="sr-only">Open tasks</span>

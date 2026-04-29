@@ -45,7 +45,7 @@ export function PatientDetailPanel({ patient, bookingsForPatient = [] }: Props) 
           </h2>
           <p className="text-xs text-ink/60">ID: {core.id}</p>
         </div>
-        <StatusBadge status={core.status as any} showText />
+        <StatusBadge status={core.status} showText />
       </div>
 
       {/* Contact */}

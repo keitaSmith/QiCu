@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { Service } from '@/models/service'
 import { usePractitioner } from '@/components/layout/PractitionerContext'
 import { withPractitionerHeaders } from '@/lib/practitioners'
+import { getErrorMessage } from '@/lib/errors'
 
 async function fetchServices(practitionerId: string): Promise<Service[]> {
   const res = await fetch('/api/services', {
@@ -71,8 +72,8 @@ export function useServices() {
       const items = await fetchServices(practitionerId)
       setServices(items)
       return items
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to load services')
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, 'Failed to load services'))
       return []
     } finally {
       setLoading(false)
@@ -101,8 +102,8 @@ export function useServices() {
       const created = await createService(payload, practitionerId)
       prependService(created)
       return created
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to create service')
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, 'Failed to create service'))
       return null
     }
   }, [prependService, practitionerId])
@@ -113,8 +114,8 @@ export function useServices() {
       const updated = await patchService(serviceId, payload, practitionerId)
       replaceService(updated)
       return updated
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to update service')
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, 'Failed to update service'))
       return null
     }
   }, [replaceService, practitionerId])
@@ -125,8 +126,8 @@ export function useServices() {
       await deleteServiceRequest(serviceId, practitionerId)
       removeService(serviceId)
       return true
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to delete service')
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, 'Failed to delete service'))
       return false
     }
   }, [removeService, practitionerId])

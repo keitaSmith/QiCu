@@ -4,6 +4,7 @@ import type { Booking, BookingStatus } from '@/models/booking'
 import { BOOKINGS_CHANGED_EVENT, emitBookingsChanged } from '@/lib/booking-events'
 import { usePractitioner } from '@/components/layout/PractitionerContext'
 import { withPractitionerHeaders } from '@/lib/practitioners'
+import { getErrorMessage } from '@/lib/errors'
 
 type CreateBookingInput = {
   patientId: string
@@ -94,8 +95,8 @@ export function useBookings() {
       const items = await fetchBookings(practitionerId)
       setBookings(items)
       return items
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to load bookings')
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, 'Failed to load bookings'))
       return []
     } finally {
       setLoading(false)
@@ -134,8 +135,8 @@ export function useBookings() {
       prependBooking(created)
       emitBookingsChanged()
       return created
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to create booking')
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, 'Failed to create booking'))
       return null
     }
   }, [prependBooking, practitionerId])
@@ -147,8 +148,8 @@ export function useBookings() {
       replaceBooking(updated)
       emitBookingsChanged()
       return updated
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to update booking')
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, 'Failed to update booking'))
       return null
     }
   }, [replaceBooking, practitionerId])
@@ -160,8 +161,8 @@ export function useBookings() {
       replaceBooking(updated)
       emitBookingsChanged()
       return updated
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to update booking')
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, 'Failed to update booking'))
       return null
     }
   }, [replaceBooking, practitionerId])
@@ -173,8 +174,8 @@ export function useBookings() {
       removeBooking(bookingId)
       emitBookingsChanged()
       return true
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to delete booking')
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, 'Failed to delete booking'))
       return false
     }
   }, [removeBooking, practitionerId])

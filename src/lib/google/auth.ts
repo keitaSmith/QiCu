@@ -103,7 +103,6 @@ export async function fetchGoogleUserEmail(accessToken: string) {
 
 export async function ensureFreshGoogleAccessToken(
   practitionerId: string,
-  req: NextRequest,
 ): Promise<GoogleIntegrationRecord> {
   const record = getGoogleIntegration(practitionerId)
 

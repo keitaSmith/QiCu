@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { exchangeGoogleAuthCode, fetchGoogleUserEmail } from '@/lib/google/auth'
 import { consumeGoogleOAuthState, saveGoogleIntegration } from '@/lib/google/store'
+import { getErrorMessage } from '@/lib/errors'
 
 function closeWindowHtml(message: string, success: boolean) {
   const safeMessage = message.replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -70,9 +71,9 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: { 'Content-Type': 'text/html; charset=utf-8' },
     })
-  } catch (nextError: any) {
+  } catch (nextError: unknown) {
     return new NextResponse(
-      closeWindowHtml(nextError?.message ?? 'Could not connect Google Calendar.', false),
+      closeWindowHtml(getErrorMessage(nextError, 'Could not connect Google Calendar.'), false),
       {
         status: 500,
         headers: { 'Content-Type': 'text/html; charset=utf-8' },

@@ -1,7 +1,6 @@
 'use client'
 
 import { cn } from '@/lib/cn'
-import type { ReactNode } from 'react'
 
 export type RadioOption<T extends string> = {
   value: T

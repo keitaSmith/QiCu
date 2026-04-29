@@ -14,7 +14,7 @@ import { SessionDialog } from '@/components/sessions/SessionDialog'
 
 import { toCoreView, type PatientCoreView } from "@/models/patient.coreView";
 
-import { isSameLocalDay, startOfDay } from '@/lib/dates'
+import { isSameLocalDay } from '@/lib/dates'
 
 // UI primitives
 import { TableFrame, TableEl, THead, TBody, Tr, Th, Td } from '@/components/ui/QiCuTable'
@@ -45,7 +45,7 @@ export default function PatientsPage() {
   const [onlyToday, setOnlyToday] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
 
-  const [selectedPatient, setSelectedPatient] = useState<FhirPatient | null>(null)
+  const [, setSelectedPatient] = useState<FhirPatient | null>(null)
   const { setRightPanelContent } = useRightPanel()
   
   // Clear the right panel when this page mounts
@@ -73,7 +73,7 @@ export default function PatientsPage() {
   const [sessionPatient, setSessionPatient] = useState<{ id: string; name: string } | null>(null)
 
   const needle = q.trim().toLowerCase()
-  const now = new Date()
+  const now = useMemo(() => new Date(), [])
 
   /**
    * Build a Set of patientIds who have ANY non-cancelled booking today,
@@ -85,8 +85,8 @@ export default function PatientsPage() {
   const todaysByPatient = useMemo(() => {
     const set = new Set<string>()
 
-    const items = (bookings as any[])
-      .map(b => ({ ...b, startD: new Date(b.start) }))
+    const items = bookings
+      .map(booking => ({ ...booking, startD: new Date(booking.start) }))
       // Guard against invalid dates
       .filter(b => !isNaN(b.startD.getTime()))
 
@@ -100,9 +100,7 @@ export default function PatientsPage() {
     }
 
     if (DEBUG_TODAY) {
-      // eslint-disable-next-line no-console
       console.log('[PatientsPage] todaysByPatient:', Array.from(set))
-      // eslint-disable-next-line no-console
       console.log('[PatientsPage] sample today?', items.slice(0, 3))
     }
 
@@ -134,10 +132,6 @@ export default function PatientsPage() {
     })
   }, [patients, showArchived, needle, onlyToday, todaysByPatient])
   
-  const rows: PatientCoreView[] = useMemo(
-  () => filtered.map(toCoreView),
-  [filtered]
-);
 const bookingToday=(p:FhirPatient)=>{
   return p.id ? todaysByPatient.has(p.id) : false
 }
@@ -259,7 +253,7 @@ function handleViewPatient(p: FhirPatient) {
                   <Td>{row.mobile || '—'}</Td>
                   <Td>
                     {/* your StatusBadge now accepts patient statuses too */}
-                    <StatusBadge status={s as any} />
+                    <StatusBadge status={s} />
                   </Td>
                   
                   <Td className="align-middle">
@@ -432,9 +426,7 @@ function handleViewPatient(p: FhirPatient) {
                   )}? This cannot be undone.`,
                 )
               ) {
-                setPatients(prev =>
-                  prev.filter(x => x.id !== p.id),
-                )
+                void deletePatientById(p.id ?? '')
               }
             }}
             extras={[

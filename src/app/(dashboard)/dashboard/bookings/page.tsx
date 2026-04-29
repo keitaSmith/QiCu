@@ -42,6 +42,7 @@ import { buildBookingsExportCsv, normalizePatientLookupKey, normalizeServiceLook
 import { withPractitionerHeaders } from '@/lib/practitioners'
 import * as PatientModel from '@/models/patient'
 import { toCoreView } from '@/models/patient.coreView'
+import { getErrorMessage } from '@/lib/errors'
 
 type PatientOption = { id: string; name: string }
 type ViewMode = 'today' | 'upcoming' | 'past'
@@ -131,7 +132,7 @@ export default function BookingsPage() {
     setPastPage(1)
   }, [q, status])
 
-  const now = new Date()
+  const now = useMemo(() => new Date(), [])
   const todayStart = startOfDay(now)
 
   const names = useMemo(() => nameMap(patients), [patients])
@@ -248,7 +249,7 @@ export default function BookingsPage() {
     return true
   }
 
-  function canCancelFromMenu(b: Booking, currentView: ViewMode) {
+  function canCancelFromMenu(b: Booking) {
     if (b.status === 'cancelled') return false
     return true
   }
@@ -376,7 +377,7 @@ export default function BookingsPage() {
       })
     }
 
-    if (canCancelFromMenu(b, currentView)) {
+    if (canCancelFromMenu(b)) {
       extras.push({
         label: isPastBooking ? 'Mark as cancelled' : 'Cancel',
         onSelect: () =>
@@ -427,8 +428,8 @@ export default function BookingsPage() {
             ? `Google sync complete. ${data.updated ?? 0} updated, ${data.cancelled ?? 0} cancelled, ${data.unchanged ?? 0} unchanged.`
             : 'No linked Google bookings were found.',
       })
-    } catch (error: any) {
-      showSnackbar({ variant: 'error', message: error?.message ?? 'Failed to sync linked Google bookings.' })
+    } catch (error: unknown) {
+      showSnackbar({ variant: 'error', message: getErrorMessage(error, 'Failed to sync linked Google bookings.') })
     } finally {
       setSyncingGoogle(false)
     }

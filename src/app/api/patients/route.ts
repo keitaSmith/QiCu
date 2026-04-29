@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ZodError } from 'zod'
 
 import { patientsStore } from '@/data/patientsStore'
 import type { FhirPatient } from '@/models/patient'
@@ -24,8 +25,8 @@ export async function POST(req: NextRequest) {
     const parsed = FhirPatientSchema.parse(withOwnership)
     patientsStore.unshift(parsed)
     return NextResponse.json(parsed, { status: 201 })
-  } catch (err: any) {
-    if (err?.name === 'ZodError') {
+  } catch (err: unknown) {
+    if (err instanceof ZodError) {
       return NextResponse.json(
         {
           error: 'Invalid FHIR Patient payload',

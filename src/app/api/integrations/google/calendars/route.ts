@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { listGoogleCalendars } from '@/lib/google/calendarApi'
 import { getGoogleIntegration, saveGoogleIntegration } from '@/lib/google/store'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { getErrorMessage } from '@/lib/errors'
 
 export async function GET(req: NextRequest) {
   const practitionerId = getPractitionerIdFromRequest(req)
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({ calendars }, { status: 200 })
-  } catch (nextError: any) {
-    return NextResponse.json({ error: nextError?.message ?? 'Failed to load Google calendars' }, { status: 400 })
+  } catch (nextError: unknown) {
+    return NextResponse.json({ error: getErrorMessage(nextError, 'Failed to load Google calendars') }, { status: 400 })
   }
 }

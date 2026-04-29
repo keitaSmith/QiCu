@@ -24,7 +24,6 @@ import {
   Cog6ToothIcon,
   DocumentDuplicateIcon,
   FolderIcon,
-  HomeIcon,
   UsersIcon,
   UserGroupIcon,
   XMarkIcon,
@@ -64,12 +63,6 @@ const teams = [
   { id: 2, name: 'Tailwind Labs', href: '#', initial: 'T' },
   { id: 3, name: 'Workcation', href: '#', initial: 'W' },
 ]
-
-const userNavigation = [
-  { name: 'Your profile', href: '#' },
-  { name: 'Sign out', href: '#' },
-]
-
 
 function classNames(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(' ')

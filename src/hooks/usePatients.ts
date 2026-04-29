@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { FhirPatient } from '@/models/patient'
 import { usePractitioner } from '@/components/layout/PractitionerContext'
 import { withPractitionerHeaders } from '@/lib/practitioners'
+import { getErrorMessage } from '@/lib/errors'
 
 async function fetchPatients(practitionerId: string): Promise<FhirPatient[]> {
   const res = await fetch('/api/patients', {
@@ -72,8 +73,8 @@ export function usePatients() {
       const items = await fetchPatients(practitionerId)
       setPatients(items)
       return items
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to load patients')
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, 'Failed to load patients'))
       return []
     } finally {
       setLoading(false)
@@ -103,8 +104,8 @@ export function usePatients() {
         const created = await createPatient(payload, practitionerId)
         prependPatient(created)
         return created
-      } catch (e: any) {
-        setError(e?.message ?? 'Failed to create patient')
+      } catch (e: unknown) {
+        setError(getErrorMessage(e, 'Failed to create patient'))
         return null
       }
     },
@@ -118,8 +119,8 @@ export function usePatients() {
         const updated = await patchPatient(patientId, payload, practitionerId)
         replacePatient(updated)
         return updated
-      } catch (e: any) {
-        setError(e?.message ?? 'Failed to update patient')
+      } catch (e: unknown) {
+        setError(getErrorMessage(e, 'Failed to update patient'))
         return null
       }
     },
@@ -133,8 +134,8 @@ export function usePatients() {
         await deletePatientRequest(patientId, practitionerId)
         removePatient(patientId)
         return true
-      } catch (e: any) {
-        setError(e?.message ?? 'Failed to delete patient')
+      } catch (e: unknown) {
+        setError(getErrorMessage(e, 'Failed to delete patient'))
         return false
       }
     },

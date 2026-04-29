@@ -18,6 +18,7 @@ import { usePatients } from '@/hooks/usePatients'
 import { dateFmt as dt, timeFmt } from '@/lib/dates'
 import { displayName, nameMap } from '@/lib/patients/selectors'
 import type { Session } from '@/models/session'
+import { getErrorMessage } from '@/lib/errors'
 
 function truncateText(value: string, maxLength: number) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value
@@ -97,8 +98,8 @@ export default function SessionsPage() {
     try {
       await deleteSessionRecord(sessionId)
       showSnackbar({ variant: 'success', message: 'Session deleted.' })
-    } catch (error: any) {
-      showSnackbar({ variant: 'error', message: error?.message ?? 'Failed to delete session.' })
+    } catch (error: unknown) {
+      showSnackbar({ variant: 'error', message: getErrorMessage(error, 'Failed to delete session.') })
     }
   }
 

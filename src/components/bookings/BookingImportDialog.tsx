@@ -1,7 +1,7 @@
 'use client'
 
 import { Dialog, DialogBackdrop, DialogPanel } from '@headlessui/react'
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 
 import type { PatientCoreView } from '@/models/patient.coreView'
 import type { Service } from '@/models/service'
@@ -24,6 +24,7 @@ import { LongCardSkeleton } from '@/components/ui/LongCardSkeleton'
 import SelectField, { type SelectOption } from '@/components/ui/SelectField'
 import SearchableSelectField, { type SearchableSelectOption } from '@/components/ui/SearchableSelectField'
 import { withPractitionerHeaders } from '@/lib/practitioners'
+import { getErrorMessage } from '@/lib/errors'
 
 type GoogleStatus = {
   connected: boolean
@@ -139,6 +140,12 @@ function normalizeMessages(items: string[]) {
 
 function editorKey(kind: 'patient' | 'service', eventId: string) {
   return `${kind}:${eventId}`
+}
+
+function hasGoogleEventId(
+  row: BookingImportPreviewRow,
+): row is BookingImportPreviewRow & { externalEventId: string } {
+  return row.externalSource === 'google' && Boolean(row.externalEventId)
 }
 
 export function BookingImportDialog({
@@ -287,7 +294,7 @@ export function BookingImportDialog({
     return selectedGoogleRows.filter(row => !isGoogleRowReady(row) && row.errors.length === 0).length
   }, [isGooglePreview, selectedGoogleRows])
 
-  async function loadGoogleStatus() {
+  const loadGoogleStatus = useCallback(async () => {
     const res = await fetch('/api/integrations/google/status', {
       cache: 'no-store',
       headers: withPractitionerHeaders(practitionerId),
@@ -301,9 +308,9 @@ export function BookingImportDialog({
     setGoogleStatus(data)
     setGoogleSelectedCalendarId(data.selectedCalendarId ?? '')
     return data
-  }
+  }, [practitionerId])
 
-  async function loadGoogleCalendars() {
+  const loadGoogleCalendars = useCallback(async () => {
     const res = await fetch('/api/integrations/google/calendars', {
       cache: 'no-store',
       headers: withPractitionerHeaders(practitionerId),
@@ -318,7 +325,7 @@ export function BookingImportDialog({
     setGoogleCalendars(calendars)
     setGoogleSelectedCalendarId(prev => prev || calendars[0]?.id || '')
     return calendars
-  }
+  }, [practitionerId])
 
   useEffect(() => {
     if (!open || sourceTab !== 'google') return
@@ -336,9 +343,9 @@ export function BookingImportDialog({
         if (!cancelled && status.connected) {
           await loadGoogleCalendars()
         }
-      } catch (nextError: any) {
+      } catch (nextError: unknown) {
         if (!cancelled) {
-          setError(nextError?.message ?? 'Failed to initialize Google Calendar import')
+          setError(getErrorMessage(nextError, 'Failed to initialize Google Calendar import'))
         }
       } finally {
         if (!cancelled) {
@@ -352,7 +359,7 @@ export function BookingImportDialog({
     return () => {
       cancelled = true
     }
-  }, [open, practitionerId, sourceTab])
+  }, [loadGoogleCalendars, loadGoogleStatus, open, sourceTab])
 
   function resetState() {
     setSourceTab('csv')
@@ -481,8 +488,8 @@ export function BookingImportDialog({
 
       await loadGoogleStatus()
       await loadGoogleCalendars()
-    } catch (nextError: any) {
-      setError(nextError?.message ?? 'Could not connect Google Calendar')
+    } catch (nextError: unknown) {
+      setError(getErrorMessage(nextError, 'Could not connect Google Calendar'))
     } finally {
       setGoogleLoading(false)
     }
@@ -507,8 +514,8 @@ export function BookingImportDialog({
       setPreviewRows([])
       setGoogleSelectedEventIds([])
       setActiveEditor(null)
-    } catch (nextError: any) {
-      setError(nextError?.message ?? 'Failed to disconnect Google Calendar')
+    } catch (nextError: unknown) {
+      setError(getErrorMessage(nextError, 'Failed to disconnect Google Calendar'))
     } finally {
       setGoogleLoading(false)
     }
@@ -576,11 +583,9 @@ export function BookingImportDialog({
 
       const rows = (data.rows ?? []).map(row => ({ ...row }))
       setPreviewRows(rows)
-      setGoogleSelectedEventIds(
-        rows.filter(isSuggestedGoogleSelection).map(row => row.externalEventId!),
-      )
-    } catch (nextError: any) {
-      setError(nextError?.message ?? 'Failed to preview Google events')
+      setGoogleSelectedEventIds(rows.filter(hasGoogleEventId).filter(isSuggestedGoogleSelection).map(row => row.externalEventId))
+    } catch (nextError: unknown) {
+      setError(getErrorMessage(nextError, 'Failed to preview Google events'))
       setPreviewRows([])
       setGoogleSelectedEventIds([])
     } finally {
@@ -597,8 +602,9 @@ export function BookingImportDialog({
   function selectAllGoogleEvents() {
     setGoogleSelectedEventIds(
       previewRows
-        .filter(row => row.externalSource === 'google' && row.errors.length === 0 && row.externalEventId)
-        .map(row => row.externalEventId!),
+        .filter(hasGoogleEventId)
+        .filter(row => row.externalSource === 'google' && row.errors.length === 0)
+        .map(row => row.externalEventId),
     )
   }
 

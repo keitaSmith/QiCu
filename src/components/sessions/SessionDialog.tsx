@@ -15,6 +15,7 @@ import SearchableSelectField, { type SearchableSelectOption } from '@/components
 import { useServices } from '@/hooks/useServices'
 import { usePractitioner } from '@/components/layout/PractitionerContext'
 import { withPractitionerHeaders } from '@/lib/practitioners'
+import { getErrorMessage } from '@/lib/errors'
 
 type PatientOption = { id: string; name: string }
 
@@ -269,9 +270,9 @@ export function SessionDialog({
       }
 
       onClose()
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to save session', err)
-      setError(err?.message ?? 'Failed to save session')
+      setError(getErrorMessage(err, 'Failed to save session'))
       showSnackbar({ variant: 'error', message: 'Could not save session. Please try again.' })
     } finally {
       setSubmitting(false)

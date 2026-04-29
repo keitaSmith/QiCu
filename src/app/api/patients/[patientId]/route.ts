@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ZodError } from 'zod'
 
 import { patientsStore } from '@/data/patientsStore'
 import type { FhirPatient } from '@/models/patient'
@@ -25,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const json = await req.json()
+    const json = (await req.json()) as Partial<FhirPatient>
     const merged: FhirPatient = setPatientPractitionerId(
       {
         ...patientsStore[index],
@@ -44,8 +45,8 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     patientsStore[index] = parsed
 
     return NextResponse.json(parsed, { status: 200 })
-  } catch (err: any) {
-    if (err?.name === 'ZodError') {
+  } catch (err: unknown) {
+    if (err instanceof ZodError) {
       return NextResponse.json(
         {
           error: 'Invalid FHIR Patient payload',
