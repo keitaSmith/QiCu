@@ -38,7 +38,7 @@ import { usePatients } from '@/hooks/usePatients'
 import { TableSkeleton } from '@/components/ui/TableSkeleton'
 import { CardListSkeleton } from '@/components/ui/CardListSkeleton'
 import { useSnackbar } from '@/components/ui/Snackbar'
-import { buildBookingsExportCsv, normalizePatientLookupKey, normalizeServiceLookupKey, type BookingImportPreviewRow } from '@/lib/bookingsImportExport'
+import { buildBookingsExportCsv, buildServiceImportLookupKey, normalizePatientLookupKey, type BookingImportPreviewRow } from '@/lib/bookingsImportExport'
 import { withPractitionerHeaders } from '@/lib/practitioners'
 import * as PatientModel from '@/models/patient'
 import { toCoreView } from '@/models/patient.coreView'
@@ -444,7 +444,10 @@ export default function BookingsPage() {
       patientCoreViews.map(patient => [normalizePatientLookupKey(patient.name), patient.id]),
     )
     const serviceByKey = new Map(
-      services.map(service => [normalizeServiceLookupKey(service.name), service]),
+      services.map(service => [
+        buildServiceImportLookupKey(service.name, service.durationMinutes),
+        service,
+      ]),
     )
 
     const buildImportedPatient = (fullName: string) => {
@@ -483,16 +486,15 @@ export default function BookingsPage() {
       }
 
       if (!serviceId && row.serviceName) {
-        const serviceKey = normalizeServiceLookupKey(row.serviceName)
+        const durationMinutes = Math.max(
+          15,
+          Math.round((new Date(row.end).getTime() - new Date(row.start).getTime()) / 60000),
+        )
+        const serviceKey = buildServiceImportLookupKey(row.serviceName, durationMinutes)
         const existingService = serviceByKey.get(serviceKey)
         serviceId = existingService?.id
 
         if (!serviceId) {
-          const durationMinutes = Math.max(
-            15,
-            Math.round((new Date(row.end).getTime() - new Date(row.start).getTime()) / 60000),
-          )
-
           const createdService = await createServiceRecord({
             name: row.serviceName.trim(),
             durationMinutes,

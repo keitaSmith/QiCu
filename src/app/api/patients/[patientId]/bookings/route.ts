@@ -4,6 +4,7 @@ import type { Booking } from '@/models/booking'
 import { findServiceByIdForPractitioner } from '@/data/servicesStore'
 import { getPractitionerIdFromRequest, patientBelongsToPractitioner } from '@/lib/practitioners'
 import { patientsStore } from '@/data/patientsStore'
+import { hasBookingOverlap } from '@/lib/bookingValidation'
 
 type CreateBookingBody = {
   start: string
@@ -40,6 +41,10 @@ export async function POST(
 
   if (end <= start) {
     return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 })
+  }
+
+  if (hasBookingOverlap(BOOKINGS, practitionerId, start.toISOString(), end.toISOString())) {
+    return NextResponse.json({ error: 'Booking overlaps an existing booking' }, { status: 409 })
   }
 
   const svc = findServiceByIdForPractitioner(body.serviceId, practitionerId)

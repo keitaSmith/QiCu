@@ -9,6 +9,7 @@ import {
 } from '@/lib/practitioners'
 import { patientsStore } from '@/data/patientsStore'
 import { syncGoogleOnBookingCreate } from '@/lib/google/sync'
+import { hasBookingOverlap } from '@/lib/bookingValidation'
 
 type CreateBookingBody = {
   patientId?: string
@@ -71,6 +72,10 @@ export async function POST(req: NextRequest) {
 
   if (end.getTime() <= start.getTime()) {
     return NextResponse.json({ error: 'end must be after start' }, { status: 400 })
+  }
+
+  if (hasBookingOverlap(BOOKINGS, practitionerId, start.toISOString(), end.toISOString())) {
+    return NextResponse.json({ error: 'Booking overlaps an existing booking' }, { status: 409 })
   }
 
   const created: Booking = {

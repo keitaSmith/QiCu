@@ -1,0 +1,102 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import { NextRequest } from 'next/server'
+
+import { BOOKINGS } from '@/data/bookings'
+import { POST } from './route'
+
+const practitionerId = 'prac-tom-cook'
+
+function buildRequest(body: Record<string, unknown>) {
+  return new NextRequest('http://localhost:3000/api/bookings', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-qicu-practitioner-id': practitionerId,
+    },
+    body: JSON.stringify(body),
+  })
+}
+
+function restoreBookings(snapshot: typeof BOOKINGS) {
+  BOOKINGS.splice(0, BOOKINGS.length, ...snapshot)
+}
+
+test('creates a valid booking', async () => {
+  const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+
+  try {
+    const start = new Date('2026-05-10T12:30:00.000Z')
+    const end = new Date('2026-05-10T13:15:00.000Z')
+    const response = await POST(
+      buildRequest({
+        patientId: 'P-T-1001',
+        serviceId: 'tom-acu-45',
+        start: start.toISOString(),
+        end: end.toISOString(),
+        skipGoogleWriteback: true,
+      }),
+    )
+
+    assert.equal(response.status, 201)
+
+    const created = await response.json()
+    assert.equal(created.patientId, 'P-T-1001')
+    assert.equal(created.serviceId, 'tom-acu-45')
+    assert.equal(created.serviceDurationMinutes, 45)
+    assert.equal(created.start, start.toISOString())
+    assert.equal(created.end, end.toISOString())
+    assert.equal(BOOKINGS[0].id, created.id)
+  } finally {
+    restoreBookings(snapshot)
+  }
+})
+
+test('rejects overlapping bookings for the same practitioner', async () => {
+  const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+
+  try {
+    const existing = BOOKINGS.find(booking => booking.id === 'b-tom-today-001')
+    assert.ok(existing)
+
+    const response = await POST(
+      buildRequest({
+        patientId: 'P-T-1002',
+        serviceId: 'tom-acu-30',
+        start: existing.start,
+        end: existing.end,
+        skipGoogleWriteback: true,
+      }),
+    )
+
+    assert.equal(response.status, 409)
+    const payload = await response.json()
+    assert.equal(payload.error, 'Booking overlaps an existing booking')
+  } finally {
+    restoreBookings(snapshot)
+  }
+})
+
+test('rejects invalid booking durations', async () => {
+  const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+
+  try {
+    const start = '2026-05-10T12:30:00.000Z'
+    const response = await POST(
+      buildRequest({
+        patientId: 'P-T-1001',
+        serviceId: 'tom-acu-45',
+        start,
+        end: start,
+        skipGoogleWriteback: true,
+      }),
+    )
+
+    assert.equal(response.status, 400)
+    const payload = await response.json()
+    assert.equal(payload.error, 'end must be after start')
+  } finally {
+    restoreBookings(snapshot)
+  }
+})

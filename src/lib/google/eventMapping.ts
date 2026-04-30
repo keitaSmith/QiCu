@@ -1,5 +1,6 @@
 import type { BookingImportPreviewRow } from '@/lib/bookingsImportExport'
 import {
+  buildServiceImportLookupKey,
   normalizePatientLookupKey,
   normalizeServiceLookupKey,
 } from '@/lib/bookingsImportExport'
@@ -164,12 +165,19 @@ function findContainedPatientMatch(summary: string, patients: PatientCoreView[])
   return matches.length === 1 ? matches[0] : null
 }
 
-function findServiceMatch(candidates: string[], summary: string, services: Service[]) {
+function findServiceMatch(
+  candidates: string[],
+  summary: string,
+  durationMinutes: number | null,
+  services: Service[],
+) {
   for (const candidate of candidates) {
-    const key = normalizeServiceLookupKey(candidate)
+    const key = buildServiceImportLookupKey(candidate, durationMinutes)
     if (!key) continue
 
-    const exact = services.find(service => normalizeServiceLookupKey(service.name) === key)
+    const exact = services.find(
+      service => buildServiceImportLookupKey(service.name, service.durationMinutes) === key,
+    )
     if (exact) return exact
   }
 
@@ -178,7 +186,7 @@ function findServiceMatch(candidates: string[], summary: string, services: Servi
 
   const containedMatches = services.filter(service => {
     const key = normalizeServiceLookupKey(service.name)
-    return key && normalizedSummary.includes(key)
+    return key && normalizedSummary.includes(key) && service.durationMinutes === durationMinutes
   })
 
   return containedMatches.length === 1 ? containedMatches[0] : null
@@ -253,6 +261,10 @@ export function buildGoogleBookingImportPreview(
 
     const start = getEventStartIso(event)
     const end = getEventEndIso(event)
+    const durationMinutes =
+      start && end
+        ? Math.max(1, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60_000))
+        : null
 
     const exactPatient =
       findExactPatientMatch(candidates.patientName, patients) ??
@@ -262,6 +274,7 @@ export function buildGoogleBookingImportPreview(
     const exactService = findServiceMatch(
       [candidates.serviceName].filter(Boolean),
       summary,
+      durationMinutes,
       services,
     )
 

@@ -67,9 +67,85 @@ function normalizeCell(value: string | undefined) {
   return (value ?? '').trim()
 }
 
-
 function normalizeWhitespace(value: string) {
   return value.trim().replace(/\s+/g, ' ')
+}
+
+function padDatePart(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+function buildDateFromParts(year: number, month: number, day: number) {
+  const parsed = new Date(year, month - 1, day)
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null
+  }
+
+  return parsed
+}
+
+export function normalizeImportedDate(dateValue: string) {
+  const trimmed = dateValue.trim()
+  if (!trimmed) return null
+
+  const isoDateMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/)
+  if (isoDateMatch) {
+    const year = Number(isoDateMatch[1])
+    const month = Number(isoDateMatch[2])
+    const day = Number(isoDateMatch[3])
+    const parsed = buildDateFromParts(year, month, day)
+
+    return parsed
+      ? `${year}-${padDatePart(month)}-${padDatePart(day)}`
+      : null
+  }
+
+  const localDateMatch = trimmed.match(/^(\d{2})[./](\d{2})[./](\d{4})$/)
+  if (localDateMatch) {
+    const day = Number(localDateMatch[1])
+    const month = Number(localDateMatch[2])
+    const year = Number(localDateMatch[3])
+    const parsed = buildDateFromParts(year, month, day)
+
+    return parsed
+      ? `${year}-${padDatePart(month)}-${padDatePart(day)}`
+      : null
+  }
+
+  return null
+}
+
+function parseTimeParts(timeValue: string) {
+  const trimmed = timeValue.trim()
+  if (!trimmed) return null
+
+  const matched = trimmed.match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/)
+  if (!matched) return null
+
+  const hours = Number(matched[1])
+  const minutes = Number(matched[2])
+  const seconds = matched[3] ? Number(matched[3]) : 0
+
+  if (
+    !Number.isInteger(hours) ||
+    !Number.isInteger(minutes) ||
+    !Number.isInteger(seconds) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59 ||
+    seconds < 0 ||
+    seconds > 59
+  ) {
+    return null
+  }
+
+  return { hours, minutes, seconds }
 }
 
 export function normalizePatientLookupKey(value: string) {
@@ -90,9 +166,22 @@ export function normalizeServiceLookupKey(value: string) {
   return normalizeWhitespace(value)
     .toLowerCase()
     .replace(/&/g, ' and ')
+    .replace(/\b\d+\s*(?:m|min|mins|minute|minutes)\b/g, ' ')
     .replace(/[^a-z0-9 ]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+export function buildServiceImportLookupKey(serviceName: string, durationMinutes: number | null | undefined) {
+  const normalizedName = normalizeServiceLookupKey(serviceName)
+  if (!normalizedName) return ''
+
+  const normalizedDuration =
+    typeof durationMinutes === 'number' && Number.isFinite(durationMinutes) && durationMinutes > 0
+      ? Math.round(durationMinutes)
+      : 0
+
+  return `${normalizedName}::${normalizedDuration}`
 }
 
 function escapeCsvCell(value: string | number | null | undefined) {
@@ -161,10 +250,28 @@ export function parseBookingsCsv(csvText: string): Record<string, string>[] {
 function parseDateTime(dateValue: string, timeValue: string) {
   if (!dateValue) return null
 
+  const normalizedDate = normalizeImportedDate(dateValue)
+
   if (timeValue) {
-    const combined = `${dateValue}T${timeValue}`
-    const parsed = new Date(combined)
-    return Number.isNaN(parsed.getTime()) ? null : parsed
+    if (!normalizedDate) return null
+
+    const timeParts = parseTimeParts(timeValue)
+    if (!timeParts) return null
+
+    const [year, month, day] = normalizedDate.split('-').map(Number)
+    return new Date(
+      year,
+      month - 1,
+      day,
+      timeParts.hours,
+      timeParts.minutes,
+      timeParts.seconds,
+    )
+  }
+
+  if (normalizedDate) {
+    const [year, month, day] = normalizedDate.split('-').map(Number)
+    return new Date(year, month - 1, day)
   }
 
   const parsed = new Date(dateValue)
@@ -201,7 +308,10 @@ export function buildBookingImportPreview(
     patients.map(patient => [normalizePatientLookupKey(patient.name), patient.id ?? '']),
   )
   const serviceMap = new Map(
-    services.map(service => [normalizeServiceLookupKey(service.name), service]),
+    services.map(service => [
+      buildServiceImportLookupKey(service.name, service.durationMinutes),
+      service,
+    ]),
   )
 
   return rawRows.map((row, rowIndex) => {
@@ -209,29 +319,35 @@ export function buildBookingImportPreview(
       row.patientname || row.patient || row.client || row.clientname || ''
     const serviceName =
       row.servicename || row.service || row.appointmenttype || ''
+    const hasExplicitEndDate = Boolean(row.enddate || row.end)
+    const hasExplicitEndTime = Boolean(row.endtime)
 
     const start = parseDateTime(
       row.date || row.bookingdate || row.startdate || row.start,
       row.starttime || row.time || '',
     )
 
-    let end = parseDateTime(
-      row.enddate || row.date || row.end,
-      row.endtime || '',
-    )
-
-    const matchedService = serviceMap.get(normalizeServiceLookupKey(serviceName))
+    let end = hasExplicitEndDate || hasExplicitEndTime
+      ? parseDateTime(row.enddate || row.date || row.end, row.endtime || '')
+      : null
+    const importedDurationMinutes = Number.parseInt(row.durationminutes || row.duration || '', 10)
+    const explicitDurationMinutes = Number.isFinite(importedDurationMinutes) && importedDurationMinutes > 0
+      ? importedDurationMinutes
+      : undefined
 
     if (!end && start) {
-      const durationValue = Number.parseInt(row.durationminutes || row.duration || '', 10)
-      const resolvedDuration = Number.isFinite(durationValue) && durationValue > 0
-        ? durationValue
-        : matchedService?.durationMinutes
-
-      if (resolvedDuration) {
-        end = new Date(start.getTime() + resolvedDuration * 60_000)
+      if (explicitDurationMinutes) {
+        end = new Date(start.getTime() + explicitDurationMinutes * 60_000)
       }
     }
+
+    const resolvedDurationMinutes =
+      start && end
+        ? Math.max(1, Math.round((end.getTime() - start.getTime()) / 60_000))
+        : explicitDurationMinutes
+    const matchedService = serviceMap.get(
+      buildServiceImportLookupKey(serviceName, resolvedDurationMinutes),
+    )
 
     const errors: string[] = []
     const warnings: string[] = []
@@ -240,11 +356,17 @@ export function buildBookingImportPreview(
     const willCreatePatient = Boolean(patientName) && !matchedPatientId
     const willCreateService = Boolean(serviceName) && !matchedServiceId
     const status = readStatus(row.status || '')
+    const durationMismatch =
+      explicitDurationMinutes &&
+      start &&
+      end &&
+      Math.round((end.getTime() - start.getTime()) / 60_000) !== explicitDurationMinutes
 
     if (!patientName) errors.push('Missing patient name')
     if (!serviceName) errors.push('Missing service name')
     if (!start) errors.push('Missing or invalid start date/time')
     if (!end) errors.push('Missing or invalid end time / duration')
+    if (durationMismatch) errors.push('End time does not match the provided duration')
     if (willCreatePatient) warnings.push('New patient will be created during import')
     if (willCreateService) warnings.push('New service will be created during import')
     if (start && end && end.getTime() <= start.getTime()) errors.push('End must be after start')

@@ -48,6 +48,19 @@ test('prefers tagged description values over summary candidates', () => {
   )
 })
 
+test('handles missing tagged values and colon-separated summaries', () => {
+  assert.deepEqual(
+    extractGoogleEventCandidates(
+      'Jane Doe: Initial Consultation',
+      undefined,
+    ),
+    {
+      patientName: 'Jane Doe',
+      serviceName: 'Initial Consultation',
+    },
+  )
+})
+
 test('detects existing imports before probable time and service duplicates', () => {
   const existingImport = detectGoogleBookingDuplicate(
     'google-event-1',
@@ -118,6 +131,84 @@ test('classifies matched appointments, blocked time, and invalid events', () => 
       reviewReasons: [],
     },
   )
+})
+
+test('flags duplicate rows for review and ignores unusable google events', () => {
+  const duplicateClassification = classifyGoogleImportCandidate({
+    summary: 'Jane Doe - Initial Consultation',
+    hasPatientMatch: true,
+    hasServiceMatch: true,
+    duplicateStatus: 'possible',
+    errors: [],
+  })
+
+  assert.equal(duplicateClassification.importClassification, 'booking-candidate')
+  assert.equal(duplicateClassification.importConfidence, 'review')
+
+  const rows = buildGoogleBookingImportPreview(
+    [
+      {
+        id: 'google-event-all-day',
+        summary: 'Clinic holiday',
+        start: { date: '2026-05-11' },
+        end: { date: '2026-05-12' },
+      },
+      {
+        id: 'google-event-cancelled',
+        status: 'cancelled',
+        summary: 'Jane Doe - Initial Consultation',
+        start: { dateTime: bookingBase.start },
+        end: { dateTime: bookingBase.end },
+      },
+    ],
+    'calendar-1',
+    [{ id: 'patient-1', name: 'Jane Doe', status: 'active' }],
+    [
+      {
+        id: 'service-1',
+        practitionerId: 'practitioner-1',
+        name: 'Initial Consultation',
+        durationMinutes: 60,
+        active: true,
+      },
+    ],
+    [],
+    'review-everything',
+  )
+
+  assert.equal(rows[0].importClassification, 'ignore')
+  assert.ok(rows[0].errors.includes('All-day event'))
+  assert.equal(rows[1].importClassification, 'ignore')
+  assert.ok(rows[1].errors.includes('Already cancelled'))
+})
+
+test('marks preview duplicates when time and normalized service align', () => {
+  const rows = buildGoogleBookingImportPreview(
+    [
+      {
+        id: 'google-event-possible-duplicate',
+        summary: 'Jane Doe - Initial Consultation',
+        start: { dateTime: bookingBase.start },
+        end: { dateTime: bookingBase.end },
+      },
+    ],
+    'calendar-1',
+    [{ id: 'patient-1', name: 'Jane Doe', status: 'active' }],
+    [
+      {
+        id: 'service-1',
+        practitionerId: 'practitioner-1',
+        name: 'Initial Consultation',
+        durationMinutes: 60,
+        active: true,
+      },
+    ],
+    [bookingBase],
+    'review-everything',
+  )
+
+  assert.equal(rows[0].duplicateStatus, 'possible')
+  assert.equal(rows[0].importConfidence, 'review')
 })
 
 test('builds high-confidence preview rows from known patients and services', () => {
