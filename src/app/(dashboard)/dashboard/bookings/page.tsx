@@ -311,7 +311,7 @@ export default function BookingsPage() {
       resource: b.resource ?? null,
       notes: b.notes ?? null,
       status: b.status,
-    })
+    }, { throwOnError: true })
   }
 
   async function handleBookingUpdated(b: Booking) {
@@ -321,7 +321,7 @@ export default function BookingsPage() {
       serviceId: b.serviceId,
       resource: b.resource ?? null,
       notes: b.notes ?? null,
-    })
+    }, { throwOnError: true })
 
     if (updated) {
       replaceBooking(updated)

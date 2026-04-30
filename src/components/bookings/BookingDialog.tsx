@@ -5,12 +5,14 @@ import { Dialog, DialogBackdrop, DialogPanel } from '@headlessui/react'
 
 import type { Booking } from '@/models/booking'
 import { useSnackbar } from '@/components/ui/Snackbar'
+import { ErrorDialog } from '@/components/ui/ErrorDialog'
 import SelectField, { type SelectOption } from '@/components/ui/SelectField'
 import SearchableSelectField, { type SearchableSelectOption } from '@/components/ui/SearchableSelectField'
 import { useServices } from '@/hooks/useServices'
 import { usePractitioner } from '@/components/layout/PractitionerContext'
 import { BookingTimePicker } from '@/components/bookings/BookingTimePicker'
 import { timeFmt } from '@/lib/dates'
+import { getErrorMessage } from '@/lib/errors'
 
 type PatientOption = { id: string; name: string }
 
@@ -41,6 +43,8 @@ function generateBookingCode() {
   return `BKG-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
 }
 
+const BOOKING_OVERLAP_ERROR = 'Booking overlaps an existing booking'
+
 export function BookingDialog({
   open,
   onClose,
@@ -68,6 +72,7 @@ export function BookingDialog({
   const [notes, setNotes] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false)
 
   const canChoosePatient = !patientId && patients && patients.length > 0 && !isEdit
 
@@ -96,6 +101,7 @@ export function BookingDialog({
 
     setError(null)
     setSubmitting(false)
+    setConflictDialogOpen(false)
 
     if (isEdit && booking) {
       setStartLocal(toLocalDatetimeInputValue(new Date(booking.start)))
@@ -149,6 +155,7 @@ export function BookingDialog({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
+    setConflictDialogOpen(false)
 
     const effectivePatientId = isEdit && booking ? booking.patientId : patientId ?? selectedPatientId
 
@@ -210,17 +217,23 @@ export function BookingDialog({
       }
 
       onClose()
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err)
-      setError('Something went wrong while saving the booking.')
-      showSnackbar({ variant: 'error', message: 'Failed to save booking.' })
+      const message = getErrorMessage(err, 'Something went wrong while saving the booking.')
+      if (message === BOOKING_OVERLAP_ERROR) {
+        setConflictDialogOpen(true)
+      } else {
+        setError(message)
+        showSnackbar({ variant: 'error', message: 'Failed to save booking.' })
+      }
     } finally {
       setSubmitting(false)
     }
   }
 
   return (
-    <Dialog open={open} onClose={onClose} className="relative z-40">
+    <>
+      <Dialog open={open} onClose={onClose} className="relative z-40">
       <DialogBackdrop className="fixed inset-0 bg-black/30" />
       <div className="fixed inset-0 z-40 overflow-y-auto">
         <div className="flex min-h-full items-center justify-center p-4">
@@ -331,6 +344,13 @@ export function BookingDialog({
           </DialogPanel>
         </div>
       </div>
-    </Dialog>
+      </Dialog>
+      <ErrorDialog
+        open={conflictDialogOpen}
+        onClose={() => setConflictDialogOpen(false)}
+        title="Scheduling Conflict"
+        message="This time slot is already booked. Please choose another time."
+      />
+    </>
   )
 }

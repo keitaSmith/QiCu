@@ -31,6 +31,10 @@ type PatchBookingInput = {
   skipGoogleWriteback?: boolean
 }
 
+type MutationOptions = {
+  throwOnError?: boolean
+}
+
 async function fetchBookings(practitionerId: string): Promise<Booking[]> {
   const res = await fetch('/api/bookings', {
     cache: 'no-store',
@@ -128,7 +132,7 @@ export function useBookings() {
     setBookings(prev => prev.filter(b => b.id !== bookingId))
   }, [])
 
-  const createBookingRecord = useCallback(async (payload: CreateBookingInput) => {
+  const createBookingRecord = useCallback(async (payload: CreateBookingInput, options?: MutationOptions) => {
     try {
       setError(null)
       const created = await createBooking(payload, practitionerId)
@@ -137,6 +141,9 @@ export function useBookings() {
       return created
     } catch (e: unknown) {
       setError(getErrorMessage(e, 'Failed to create booking'))
+      if (options?.throwOnError) {
+        throw e
+      }
       return null
     }
   }, [prependBooking, practitionerId])
@@ -154,7 +161,7 @@ export function useBookings() {
     }
   }, [replaceBooking, practitionerId])
 
-  const patchBookingById = useCallback(async (bookingId: string, payload: PatchBookingInput) => {
+  const patchBookingById = useCallback(async (bookingId: string, payload: PatchBookingInput, options?: MutationOptions) => {
     try {
       setError(null)
       const updated = await patchBooking(bookingId, payload, practitionerId)
@@ -163,6 +170,9 @@ export function useBookings() {
       return updated
     } catch (e: unknown) {
       setError(getErrorMessage(e, 'Failed to update booking'))
+      if (options?.throwOnError) {
+        throw e
+      }
       return null
     }
   }, [replaceBooking, practitionerId])
