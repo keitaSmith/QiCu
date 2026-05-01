@@ -116,6 +116,11 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
           {tasks.map(t => {
             const b = t.booking
             const start = new Date(b.start)
+            const end = new Date(b.end)
+            const isOverdue =
+              t.kind === 'write-note' &&
+              !Number.isNaN(end.getTime()) &&
+              end.getTime() < Date.now()
             const patientName = patientNameForId(b.patientId)
             const meta = taskMeta(t.kind)
             const subtitle = `${patientName} · ${dt.format(start)} · ${timeFmt.format(start)}`
@@ -123,11 +128,23 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
             return (
               <div
                 key={`${t.kind}:${b.id}`}
-                className="mx-2 my-2 rounded-2xl border border-brand-300/30 bg-surface p-3"
+                className={cn(
+                  'mx-2 my-2 rounded-2xl border bg-surface p-3',
+                  isOverdue
+                    ? 'border-amber-300/50 bg-amber-50/50'
+                    : 'border-brand-300/30',
+                )}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-ink">{meta.title}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-ink">{meta.title}</p>
+                      {isOverdue && (
+                        <span className="rounded-full border border-amber-300/60 bg-amber-100/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                          Overdue
+                        </span>
+                      )}
+                    </div>
                     <p className="mt-0.5 truncate text-xs text-ink/60">{subtitle}</p>
                     <p className="mt-1 truncate text-xs text-ink/70">
                       {b.serviceName} · {b.code}
