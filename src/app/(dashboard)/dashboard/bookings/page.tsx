@@ -851,6 +851,9 @@ export default function BookingsPage() {
         patients={patientOptions}
         onCreated={handleBookingCreated}
         onUpdated={handleBookingUpdated}
+        onBookingConflict={async () => {
+          await refreshBookings()
+        }}
         existingBookings={bookings}
       />
       <SessionDialog

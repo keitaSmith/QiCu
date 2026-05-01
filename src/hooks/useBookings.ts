@@ -35,6 +35,14 @@ type MutationOptions = {
   throwOnError?: boolean
 }
 
+type RequestError = Error & {
+  status?: number
+}
+
+function createRequestError(status: number, message: string): RequestError {
+  return Object.assign(new Error(message), { status })
+}
+
 async function fetchBookings(practitionerId: string): Promise<Booking[]> {
   const res = await fetch('/api/bookings', {
     cache: 'no-store',
@@ -53,7 +61,7 @@ async function createBooking(payload: CreateBookingInput, practitionerId: string
 
   if (!res.ok) {
     const data = await res.json().catch(() => null)
-    throw new Error(data?.error ?? 'Failed to create booking')
+    throw createRequestError(res.status, data?.error ?? 'Failed to create booking')
   }
 
   return res.json()
@@ -67,7 +75,7 @@ async function deleteBookingRequest(bookingId: string, practitionerId: string): 
 
   if (!res.ok) {
     const data = await res.json().catch(() => null)
-    throw new Error(data?.error ?? 'Failed to delete booking')
+    throw createRequestError(res.status, data?.error ?? 'Failed to delete booking')
   }
 }
 
@@ -80,7 +88,7 @@ async function patchBooking(bookingId: string, payload: PatchBookingInput, pract
 
   if (!res.ok) {
     const data = await res.json().catch(() => null)
-    throw new Error(data?.error ?? 'Failed to update booking')
+    throw createRequestError(res.status, data?.error ?? 'Failed to update booking')
   }
 
   return res.json()

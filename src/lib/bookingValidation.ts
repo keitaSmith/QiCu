@@ -2,7 +2,6 @@ import type { Booking } from '@/models/booking'
 
 export function hasBookingOverlap(
   bookings: Booking[],
-  practitionerId: string,
   startIso: string,
   endIso: string,
   excludeBookingId?: string,
@@ -11,7 +10,6 @@ export function hasBookingOverlap(
   const end = new Date(endIso)
 
   return bookings.some(booking => {
-    if (booking.practitionerId !== practitionerId) return false
     if (excludeBookingId && booking.id === excludeBookingId) return false
 
     const bookingStart = new Date(booking.start)

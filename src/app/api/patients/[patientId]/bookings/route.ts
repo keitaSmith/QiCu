@@ -43,7 +43,9 @@ export async function POST(
     return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 })
   }
 
-  if (hasBookingOverlap(BOOKINGS, practitionerId, start.toISOString(), end.toISOString())) {
+  const practitionerBookings = BOOKINGS.filter(booking => booking.practitionerId === practitionerId)
+
+  if (hasBookingOverlap(practitionerBookings, start.toISOString(), end.toISOString())) {
     return NextResponse.json({ error: 'Booking overlaps an existing booking' }, { status: 409 })
   }
 

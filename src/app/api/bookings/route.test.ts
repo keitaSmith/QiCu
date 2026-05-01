@@ -4,6 +4,7 @@ import test from 'node:test'
 import { NextRequest } from 'next/server'
 
 import { BOOKINGS } from '@/data/bookings'
+import { PATCH } from './[bookingId]/route'
 import { POST } from './route'
 
 const practitionerId = 'prac-tom-cook'
@@ -21,6 +22,17 @@ function buildRequest(body: Record<string, unknown>) {
 
 function restoreBookings(snapshot: typeof BOOKINGS) {
   BOOKINGS.splice(0, BOOKINGS.length, ...snapshot)
+}
+
+function buildPatchRequest(body: Record<string, unknown>) {
+  return new NextRequest('http://localhost:3000/api/bookings/b-tom-today-002', {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+      'x-qicu-practitioner-id': practitionerId,
+    },
+    body: JSON.stringify(body),
+  })
 }
 
 test('creates a valid booking', async () => {
@@ -96,6 +108,53 @@ test('rejects invalid booking durations', async () => {
     assert.equal(response.status, 400)
     const payload = await response.json()
     assert.equal(payload.error, 'end must be after start')
+  } finally {
+    restoreBookings(snapshot)
+  }
+})
+
+test('rejects overlapping booking updates for the same practitioner', async () => {
+  const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+
+  try {
+    const existing = BOOKINGS.find(booking => booking.id === 'b-tom-today-001')
+    assert.ok(existing)
+
+    const response = await PATCH(
+      buildPatchRequest({
+        start: existing.start,
+        end: existing.end,
+        skipGoogleWriteback: true,
+      }),
+      { params: Promise.resolve({ bookingId: 'b-tom-today-002' }) },
+    )
+
+    assert.equal(response.status, 409)
+    const payload = await response.json()
+    assert.equal(payload.error, 'Booking overlaps an existing booking')
+  } finally {
+    restoreBookings(snapshot)
+  }
+})
+
+test('updates a booking when the new time does not overlap', async () => {
+  const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+
+  try {
+    const response = await PATCH(
+      buildPatchRequest({
+        start: '2026-05-10T12:30:00.000Z',
+        end: '2026-05-10T13:00:00.000Z',
+        skipGoogleWriteback: true,
+      }),
+      { params: Promise.resolve({ bookingId: 'b-tom-today-002' }) },
+    )
+
+    assert.equal(response.status, 200)
+    const updated = await response.json()
+    assert.equal(updated.id, 'b-tom-today-002')
+    assert.equal(updated.start, '2026-05-10T12:30:00.000Z')
+    assert.equal(updated.end, '2026-05-10T13:00:00.000Z')
   } finally {
     restoreBookings(snapshot)
   }

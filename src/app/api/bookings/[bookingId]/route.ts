@@ -5,6 +5,7 @@ import { findServiceByIdForPractitioner } from '@/data/servicesStore'
 import { applyBookingStatus } from '@/lib/bookingStatus'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
 import { syncGoogleOnBookingDelete, syncGoogleOnBookingUpdate } from '@/lib/google/sync'
+import { hasBookingOverlap } from '@/lib/bookingValidation'
 
 type UpdateBookingBody = {
   start?: string
@@ -30,21 +31,44 @@ export async function PATCH(
   }
 
   const body = (await req.json()) as Partial<UpdateBookingBody>
+  const nextStart = body.start ? new Date(body.start) : new Date(booking.start)
+  const nextEnd = body.end ? new Date(body.end) : new Date(booking.end)
 
   if (body.start) {
-    const start = new Date(body.start)
-    if (isNaN(start.getTime())) {
+    if (isNaN(nextStart.getTime())) {
       return NextResponse.json({ error: 'Invalid start datetime' }, { status: 400 })
     }
-    booking.start = start.toISOString()
   }
 
   if (body.end) {
-    const end = new Date(body.end)
-    if (isNaN(end.getTime())) {
+    if (isNaN(nextEnd.getTime())) {
       return NextResponse.json({ error: 'Invalid end datetime' }, { status: 400 })
     }
-    booking.end = end.toISOString()
+  }
+
+  if (nextEnd.getTime() <= nextStart.getTime()) {
+    return NextResponse.json({ error: 'end must be after start' }, { status: 400 })
+  }
+
+  const practitionerBookings = BOOKINGS.filter(candidate => candidate.practitionerId === practitionerId)
+
+  if (
+    hasBookingOverlap(
+      practitionerBookings,
+      nextStart.toISOString(),
+      nextEnd.toISOString(),
+      booking.id,
+    )
+  ) {
+    return NextResponse.json({ error: 'Booking overlaps an existing booking' }, { status: 409 })
+  }
+
+  if (body.start) {
+    booking.start = nextStart.toISOString()
+  }
+
+  if (body.end) {
+    booking.end = nextEnd.toISOString()
   }
 
   if (body.serviceId !== undefined) {

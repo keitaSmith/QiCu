@@ -26,6 +26,7 @@ type BookingDialogProps = {
   patients?: PatientOption[]
   onCreated?: (booking: Booking) => void | Promise<void>
   onUpdated?: (booking: Booking) => void | Promise<void>
+  onBookingConflict?: () => void | Promise<void>
   existingBookings: Booking[]
 }
 
@@ -43,7 +44,17 @@ function generateBookingCode() {
   return `BKG-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
 }
 
-const BOOKING_OVERLAP_ERROR = 'Booking overlaps an existing booking'
+type ConflictError = Error & {
+  status?: number
+}
+
+function isBookingConflictError(error: unknown) {
+  return (
+    error instanceof Error &&
+    (error.message === 'Booking overlaps an existing booking' ||
+      (error as ConflictError).status === 409)
+  )
+}
 
 export function BookingDialog({
   open,
@@ -55,6 +66,7 @@ export function BookingDialog({
   patients,
   onCreated,
   onUpdated,
+  onBookingConflict,
   existingBookings,
 }: BookingDialogProps) {
   const { showSnackbar } = useSnackbar()
@@ -219,10 +231,13 @@ export function BookingDialog({
       onClose()
     } catch (err: unknown) {
       console.error(err)
-      const message = getErrorMessage(err, 'Something went wrong while saving the booking.')
-      if (message === BOOKING_OVERLAP_ERROR) {
+      if (isBookingConflictError(err)) {
+        setStartLocal('')
+        setEndLocal('')
+        await onBookingConflict?.()
         setConflictDialogOpen(true)
       } else {
+        const message = getErrorMessage(err, 'Something went wrong while saving the booking.')
         setError(message)
         showSnackbar({ variant: 'error', message: 'Failed to save booking.' })
       }

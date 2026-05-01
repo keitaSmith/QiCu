@@ -10,6 +10,8 @@ import type { Booking } from '@/models/booking'
 import { cn } from '@/lib/cn'
 import { timeFmt } from '@/lib/dates'
 import { useIsDesktop } from '@/lib/useIsDesktop'
+import { usePractitioner } from '@/components/layout/PractitionerContext'
+import { hasBookingOverlap } from '@/lib/bookingValidation'
 
 export type BookingTimePickerProps = {
   label?: string
@@ -39,6 +41,7 @@ export function BookingTimePicker({
   serviceDurationMinutes,
   existingBookings,
 }: BookingTimePickerProps) {
+  const { practitionerId } = usePractitioner()
   const duration = serviceDurationMinutes ?? null
   const isDesktop = useIsDesktop()
 
@@ -94,10 +97,18 @@ export function BookingTimePicker({
     [monthYear.year, monthYear.monthIndex],
   )
 
+  const practitionerBookings = useMemo(
+    () =>
+      existingBookings.filter(
+        booking => booking.practitionerId === practitionerId,
+      ),
+    [existingBookings, practitionerId],
+  )
+
   const slotsForSelectedDay = useMemo(() => {
     if (!selectedDate || !duration) return []
-    return generateSlotsForDay(selectedDate, existingBookings, duration)
-  }, [selectedDate, existingBookings, duration])
+    return generateSlotsForDay(selectedDate, practitionerBookings, duration)
+  }, [selectedDate, practitionerBookings, duration])
 
   const fieldDisplay = selectedDateTime
     ? `${selectedDateTime.toLocaleDateString(undefined, {
@@ -117,7 +128,7 @@ export function BookingTimePicker({
     onChange(null)
 
     if (!isDesktop && duration) {
-      const slots = generateSlotsForDay(day, existingBookings, duration)
+      const slots = generateSlotsForDay(day, practitionerBookings, duration)
       // only switch to slots-only if there are actually slots
       setShowSlotsOnlyMobile(slots.length > 0)
     }
@@ -196,7 +207,7 @@ export function BookingTimePicker({
                 selectedDate && isSameLocalDay(day, selectedDate)
               const hasAvailability =
                 !!duration &&
-                generateSlotsForDay(day, existingBookings, duration).length > 0
+                generateSlotsForDay(day, practitionerBookings, duration).length > 0
 
               const isFull = !!(duration && !isPast && !hasAvailability)
               const disabled = isPast || !hasAvailability
@@ -478,10 +489,11 @@ function getCalendarMatrix(
   return matrix
 }
 
-function generateSlotsForDay(
+export function generateSlotsForDay(
   date: Date,
   bookings: Booking[],
   durationMinutes: number,
+  now: Date = new Date(),
 ): Date[] {
   const dayStart = new Date(date)
   dayStart.setHours(WORK_DAY_START_HOUR, 0, 0, 0)
@@ -489,7 +501,6 @@ function generateSlotsForDay(
   dayEnd.setHours(WORK_DAY_END_HOUR, 0, 0, 0)
 
   const slots: Date[] = []
-  const now = new Date()
 
   for (
     let t = new Date(dayStart);
@@ -501,27 +512,17 @@ function generateSlotsForDay(
       candidateStart.getTime() + durationMinutes * 60_000,
     )
 
-    // skip past times on today
-    if (
-      isSameLocalDay(date, now) &&
-      candidateStart.getTime() < now.getTime()
-    ) {
+    if (candidateStart.getTime() < now.getTime()) {
       continue
     }
 
-    const overlapsExisting = bookings.some(b => {
-      const bStart = parseLocalDateTime(b.start)
-      const bEnd = parseLocalDateTime(b.end)
-      if (!bStart || !bEnd) return false
-      if (!isSameLocalDay(bStart, date)) return false
-
-      return (
-        candidateStart.getTime() < bEnd.getTime() &&
-        candidateEnd.getTime() > bStart.getTime()
+    if (
+      !hasBookingOverlap(
+        bookings,
+        candidateStart.toISOString(),
+        candidateEnd.toISOString(),
       )
-    })
-
-    if (!overlapsExisting) {
+    ) {
       slots.push(candidateStart)
     }
   }
