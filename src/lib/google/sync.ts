@@ -28,13 +28,21 @@ export function buildGoogleEventDescription(
   ].join('\n')
 }
 
+function buildGoogleEventSummary(booking: Booking, patientName: string) {
+  const baseSummary = `${patientName} - ${booking.serviceName}`
+  if (booking.status === 'no-show') {
+    return `${baseSummary} (No-show)`
+  }
+  return baseSummary
+}
+
 export function buildGoogleEventPayload(booking: Booking) {
   const patient = patientsStore.find(item => item.id === booking.patientId)
   const patientName = patient ? displayName(patient) : booking.patientId
   const syncedAt = new Date().toISOString()
 
   return {
-    summary: `${patientName} - ${booking.serviceName}`,
+    summary: buildGoogleEventSummary(booking, patientName),
     description: buildGoogleEventDescription(booking, patientName, syncedAt),
     location: booking.resource ?? undefined,
     start: {
@@ -84,7 +92,6 @@ export async function syncGoogleOnBookingCreate(
       buildGoogleEventPayload(booking),
     )
 
-    booking.externalSource = 'google'
     booking.externalCalendarId = calendarId
     booking.externalEventId = createdEvent.id
     booking.externalSyncStatus = 'synced'
@@ -108,6 +115,8 @@ export async function syncGoogleOnBookingUpdate(
   options?: { skip?: boolean },
 ) {
   if (options?.skip) return booking
+  if (!booking.externalEventId) return booking
+  if (booking.externalSource === 'google') return booking
 
   const integration = getGoogleIntegration(booking.practitionerId)
   if (!integration.connected) return booking
@@ -117,22 +126,35 @@ export async function syncGoogleOnBookingUpdate(
 
   if (!calendarId) return booking
 
-  if (!eventId) {
-    return syncGoogleOnBookingCreate(booking, req)
+  try {
+    if (booking.status === 'cancelled') {
+      await deleteGoogleCalendarEvent(booking.practitionerId, req, calendarId, eventId)
+      booking.externalSyncStatus = 'synced'
+      booking.externalLastSyncedAt = new Date().toISOString()
+      return booking
+    }
+
+    await updateGoogleCalendarEvent(
+      booking.practitionerId,
+      req,
+      calendarId,
+      eventId,
+      buildGoogleEventPayload(booking),
+    )
+
+    booking.externalCalendarId = calendarId
+    booking.externalSyncStatus = 'synced'
+    booking.externalLastSyncedAt = new Date().toISOString()
+  } catch (error) {
+    console.error('Google Calendar booking update sync failed', {
+      bookingId: booking.id,
+      practitionerId: booking.practitionerId,
+      calendarId,
+      eventId,
+      error,
+    })
+    booking.externalSyncStatus = 'error'
   }
-
-  await updateGoogleCalendarEvent(
-    booking.practitionerId,
-    req,
-    calendarId,
-    eventId,
-    buildGoogleEventPayload(booking),
-  )
-
-  booking.externalSource = 'google'
-  booking.externalCalendarId = calendarId
-  booking.externalSyncStatus = 'synced'
-  booking.externalLastSyncedAt = new Date().toISOString()
 
   return booking
 }
@@ -140,7 +162,12 @@ export async function syncGoogleOnBookingUpdate(
 export async function syncGoogleOnBookingDelete(
   booking: Booking,
   req: NextRequest,
+  options?: { skip?: boolean },
 ) {
+  if (options?.skip) return true
+  if (!booking.externalEventId) return true
+  if (booking.externalSource === 'google') return true
+
   const integration = getGoogleIntegration(booking.practitionerId)
   if (!integration.connected) return true
 
@@ -149,6 +176,20 @@ export async function syncGoogleOnBookingDelete(
 
   if (!calendarId || !eventId) return true
 
-  await deleteGoogleCalendarEvent(booking.practitionerId, req, calendarId, eventId)
+  try {
+    await deleteGoogleCalendarEvent(booking.practitionerId, req, calendarId, eventId)
+    booking.externalSyncStatus = 'synced'
+    booking.externalLastSyncedAt = new Date().toISOString()
+  } catch (error) {
+    console.error('Google Calendar booking delete sync failed', {
+      bookingId: booking.id,
+      practitionerId: booking.practitionerId,
+      calendarId,
+      eventId,
+      error,
+    })
+    booking.externalSyncStatus = 'error'
+  }
+
   return true
 }

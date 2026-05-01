@@ -99,14 +99,9 @@ export async function PATCH(
     Object.assign(booking, updated)
   }
 
-  try {
-    await syncGoogleOnBookingUpdate(booking, req, {
-      skip: body.skipGoogleWriteback === true,
-    })
-  } catch (error) {
-    console.error('Google Calendar booking update sync failed', error)
-    booking.externalSyncStatus = 'error'
-  }
+  await syncGoogleOnBookingUpdate(booking, req, {
+    skip: body.skipGoogleWriteback === true,
+  })
 
   return NextResponse.json(booking, { status: 200 })
 }
@@ -124,11 +119,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  try {
-    await syncGoogleOnBookingDelete(BOOKINGS[index], req)
-  } catch (error) {
-    console.error('Google Calendar booking delete sync failed', error)
-  }
+  await syncGoogleOnBookingDelete(BOOKINGS[index], req)
 
   BOOKINGS.splice(index, 1)
 

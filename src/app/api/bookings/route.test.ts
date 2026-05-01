@@ -5,7 +5,7 @@ import { NextRequest } from 'next/server'
 
 import { BOOKINGS } from '@/data/bookings'
 import { disconnectGoogleIntegration, saveGoogleIntegration } from '@/lib/google/store'
-import { PATCH } from './[bookingId]/route'
+import { DELETE, PATCH } from './[bookingId]/route'
 import { POST } from './route'
 
 const practitionerId = 'prac-tom-cook'
@@ -33,6 +33,15 @@ function buildPatchRequest(body: Record<string, unknown>) {
       'x-qicu-practitioner-id': practitionerId,
     },
     body: JSON.stringify(body),
+  })
+}
+
+function buildDeleteRequest() {
+  return new NextRequest('http://localhost:3000/api/bookings/b-tom-today-002', {
+    method: 'DELETE',
+    headers: {
+      'x-qicu-practitioner-id': practitionerId,
+    },
   })
 }
 
@@ -207,6 +216,101 @@ test('updates a booking when the new time does not overlap', async () => {
     assert.equal(updated.start, '2026-05-10T12:30:00.000Z')
     assert.equal(updated.end, '2026-05-10T13:00:00.000Z')
   } finally {
+    restoreBookings(snapshot)
+  }
+})
+
+test('still updates a booking when Google Calendar update sync fails', async () => {
+  const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+  const originalFetch = global.fetch
+  const originalConsoleError = console.error
+  const loggedErrors: unknown[][] = []
+
+  saveGoogleIntegration({
+    practitionerId,
+    connected: true,
+    accessToken: 'invalid-token',
+    selectedCalendarId: 'calendar-primary',
+  })
+
+  const booking = BOOKINGS.find(item => item.id === 'b-tom-today-002')
+  assert.ok(booking)
+  booking.externalEventId = 'event-123'
+  booking.externalCalendarId = 'calendar-primary'
+
+  global.fetch = (async () =>
+    new Response('invalid_grant', {
+      status: 401,
+      headers: { 'Content-Type': 'text/plain' },
+    })) as typeof fetch
+  console.error = (...args: unknown[]) => {
+    loggedErrors.push(args)
+  }
+
+  try {
+    const response = await PATCH(
+      buildPatchRequest({
+        start: '2026-05-10T12:30:00.000Z',
+        end: '2026-05-10T13:00:00.000Z',
+      }),
+      { params: Promise.resolve({ bookingId: 'b-tom-today-002' }) },
+    )
+
+    assert.equal(response.status, 200)
+    const updated = await response.json()
+    assert.equal(updated.externalSyncStatus, 'error')
+    assert.equal(updated.start, '2026-05-10T12:30:00.000Z')
+    assert.equal(loggedErrors.length, 1)
+    assert.equal(loggedErrors[0][0], 'Google Calendar booking update sync failed')
+  } finally {
+    global.fetch = originalFetch
+    console.error = originalConsoleError
+    disconnectGoogleIntegration(practitionerId)
+    restoreBookings(snapshot)
+  }
+})
+
+test('still deletes a booking when Google Calendar delete sync fails', async () => {
+  const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+  const originalFetch = global.fetch
+  const originalConsoleError = console.error
+  const loggedErrors: unknown[][] = []
+
+  saveGoogleIntegration({
+    practitionerId,
+    connected: true,
+    accessToken: 'invalid-token',
+    selectedCalendarId: 'calendar-primary',
+  })
+
+  const booking = BOOKINGS.find(item => item.id === 'b-tom-today-002')
+  assert.ok(booking)
+  booking.externalEventId = 'event-123'
+  booking.externalCalendarId = 'calendar-primary'
+
+  global.fetch = (async () =>
+    new Response('invalid_grant', {
+      status: 401,
+      headers: { 'Content-Type': 'text/plain' },
+    })) as typeof fetch
+  console.error = (...args: unknown[]) => {
+    loggedErrors.push(args)
+  }
+
+  try {
+    const response = await DELETE(
+      buildDeleteRequest(),
+      { params: Promise.resolve({ bookingId: 'b-tom-today-002' }) },
+    )
+
+    assert.equal(response.status, 200)
+    assert.equal(BOOKINGS.some(item => item.id === 'b-tom-today-002'), false)
+    assert.equal(loggedErrors.length, 1)
+    assert.equal(loggedErrors[0][0], 'Google Calendar booking delete sync failed')
+  } finally {
+    global.fetch = originalFetch
+    console.error = originalConsoleError
+    disconnectGoogleIntegration(practitionerId)
     restoreBookings(snapshot)
   }
 })
