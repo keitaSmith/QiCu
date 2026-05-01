@@ -4,6 +4,7 @@ import test from 'node:test'
 import { NextRequest } from 'next/server'
 
 import { BOOKINGS } from '@/data/bookings'
+import { disconnectGoogleIntegration, saveGoogleIntegration } from '@/lib/google/store'
 import { PATCH } from './[bookingId]/route'
 import { POST } from './route'
 
@@ -109,6 +110,56 @@ test('rejects invalid booking durations', async () => {
     const payload = await response.json()
     assert.equal(payload.error, 'end must be after start')
   } finally {
+    restoreBookings(snapshot)
+  }
+})
+
+test('still creates a booking when Google Calendar sync fails', async () => {
+  const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+  const originalFetch = global.fetch
+  const originalConsoleError = console.error
+  const loggedErrors: unknown[][] = []
+
+  saveGoogleIntegration({
+    practitionerId,
+    connected: true,
+    accessToken: 'invalid-token',
+    selectedCalendarId: 'calendar-primary',
+  })
+
+  global.fetch = (async () =>
+    new Response('invalid_grant', {
+      status: 401,
+      headers: { 'Content-Type': 'text/plain' },
+    })) as typeof fetch
+  console.error = (...args: unknown[]) => {
+    loggedErrors.push(args)
+  }
+
+  try {
+    const start = new Date('2026-05-10T12:30:00.000Z')
+    const end = new Date('2026-05-10T13:15:00.000Z')
+    const response = await POST(
+      buildRequest({
+        patientId: 'P-T-1001',
+        serviceId: 'tom-acu-45',
+        start: start.toISOString(),
+        end: end.toISOString(),
+      }),
+    )
+
+    assert.equal(response.status, 201)
+
+    const created = await response.json()
+    assert.equal(created.externalSyncStatus, 'error')
+    assert.equal(created.externalEventId, null)
+    assert.equal(BOOKINGS[0].id, created.id)
+    assert.equal(loggedErrors.length, 1)
+    assert.equal(loggedErrors[0][0], 'Google Calendar booking create sync failed')
+  } finally {
+    global.fetch = originalFetch
+    console.error = originalConsoleError
+    disconnectGoogleIntegration(practitionerId)
     restoreBookings(snapshot)
   }
 })

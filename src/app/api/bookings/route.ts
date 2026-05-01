@@ -101,14 +101,9 @@ export async function POST(req: NextRequest) {
 
   BOOKINGS.unshift(created)
 
-  try {
-    await syncGoogleOnBookingCreate(created, req, {
-      skip: body.skipGoogleWriteback === true || Boolean(body.externalEventId),
-    })
-  } catch (error) {
-    console.error('Google Calendar booking create sync failed', error)
-    created.externalSyncStatus = 'error'
-  }
+  await syncGoogleOnBookingCreate(created, req, {
+    skip: body.skipGoogleWriteback === true || Boolean(body.externalEventId),
+  })
 
   return NextResponse.json(created, { status: 201 })
 }
