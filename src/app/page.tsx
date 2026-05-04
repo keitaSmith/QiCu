@@ -1,18 +1,12 @@
-// app/page.tsx
+import type { Metadata } from 'next'
+import { MarketingHomePage } from '@/components/marketing/home-page'
+
+export const metadata: Metadata = {
+  title: 'QiCu - Practice management for small practitioners',
+  description:
+    'QiCu helps small healthcare and wellness practitioners manage patients, bookings, services, session notes, tasks, and calendar workflows from one organized dashboard.',
+}
+
 export default function HomePage() {
-  return (
-    <main className="flex h-screen items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold text-gray-900">Welcome</h1>
-        <p className="mt-2 text-gray-600">Click below to go to your dashboard.</p>
-        <a
-          href="/dashboard"
-          className="mt-4 inline-block rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-500"
-        >
-          Go to Dashboard
-        </a>
-      </div>
-    </main>
-    
-  )
+  return <MarketingHomePage />
 }
