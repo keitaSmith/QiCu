@@ -8,6 +8,7 @@ import {
   create,
   getById,
   listActiveByPractitioner,
+  listGoogleImportCandidates,
   update,
 } from './servicesRepository'
 
@@ -16,7 +17,13 @@ const otherPractitionerId = 'prac-repo-service-other'
 
 function cleanup() {
   for (let index = servicesStore.length - 1; index >= 0; index -= 1) {
-    if (servicesStore[index].id.startsWith('svc-repo-')) servicesStore.splice(index, 1)
+    if (
+      servicesStore[index].id.startsWith('svc-repo-') ||
+      servicesStore[index].practitionerId === practitionerId ||
+      servicesStore[index].practitionerId === otherPractitionerId
+    ) {
+      servicesStore.splice(index, 1)
+    }
   }
 }
 
@@ -105,3 +112,15 @@ test('update respects practitioner scope', () => {
   assert.equal(updated?.active, false)
 })
 
+test('listGoogleImportCandidates preserves practitioner-scoped preview candidates', () => {
+  cleanup()
+  const active = service({ id: 'svc-repo-google-active' })
+  const trashed = service({ id: 'svc-repo-google-trashed', trashMetadata: trashMetadata() })
+  const other = service({ id: 'svc-repo-google-other', practitionerId: otherPractitionerId })
+  servicesStore.push(active, trashed, other)
+
+  assert.deepEqual(
+    listGoogleImportCandidates(practitionerId).map(item => item.id).sort(),
+    [active.id, trashed.id].sort(),
+  )
+})

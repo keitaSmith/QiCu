@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { BOOKINGS } from '@/data/bookings'
 import { getGoogleCalendarEvent } from '@/lib/google/calendarApi'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
 import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrationsRepository'
 
 export async function POST(req: NextRequest) {
@@ -13,13 +13,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Connect Google Calendar and choose a calendar first.' }, { status: 400 })
   }
 
-  const linkedBookings = BOOKINGS.filter(
-    booking =>
-      booking.practitionerId === practitionerId &&
-      booking.externalSource === 'google' &&
-      booking.externalCalendarId &&
-      booking.externalEventId,
-  )
+  const linkedBookings = bookingsRepository.listGoogleLinkedBookingsForReconcile(practitionerId)
 
   let updated = 0
   let cancelled = 0
@@ -32,43 +26,17 @@ export async function POST(req: NextRequest) {
 
     const event = await getGoogleCalendarEvent(practitionerId, req, calendarId, eventId)
 
-    if (!event || event.status === 'cancelled') {
-      if (booking.status !== 'cancelled') {
-        booking.status = 'cancelled'
-        booking.statusUpdatedAt = new Date().toISOString()
-        booking.externalSyncStatus = 'synced'
-        booking.externalLastSyncedAt = new Date().toISOString()
-        cancelled += 1
-      } else {
-        unchanged += 1
-      }
-      continue
-    }
+    const result = bookingsRepository.reconcileGoogleLinkedBooking(
+      practitionerId,
+      booking.id,
+      event,
+    )
 
-    let changed = false
-    const start = event.start?.dateTime ? new Date(event.start.dateTime).toISOString() : booking.start
-    const end = event.end?.dateTime ? new Date(event.end.dateTime).toISOString() : booking.end
-    const location = (event.location ?? '').trim() || undefined
-
-    if (start && booking.start !== start) {
-      booking.start = start
-      changed = true
-    }
-    if (end && booking.end !== end) {
-      booking.end = end
-      changed = true
-    }
-    if ((booking.resource ?? '') !== (location ?? '')) {
-      booking.resource = location
-      changed = true
-    }
-
-    booking.externalSyncStatus = 'synced'
-    booking.externalLastSyncedAt = new Date().toISOString()
-
-    if (changed) {
+    if (result === 'updated') {
       updated += 1
-    } else {
+    } else if (result === 'cancelled') {
+      cancelled += 1
+    } else if (result === 'unchanged') {
       unchanged += 1
     }
   }

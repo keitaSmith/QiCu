@@ -5,6 +5,7 @@ import {
   setPatientPractitionerId,
 } from '@/lib/practitioners'
 import type { FhirPatient } from '@/models/patient'
+import { toCoreView } from '@/models/patient.coreView'
 import { FhirPatientSchema } from '@/schemas/fhir/patient'
 
 export function listByPractitionerIncludingArchived(practitionerId: string) {
@@ -17,6 +18,12 @@ export function listActiveByPractitioner(practitionerId: string) {
   return listByPractitionerIncludingArchived(practitionerId).filter(
     patient => patient.active !== false,
   )
+}
+
+export function listGoogleImportCandidates(practitionerId: string) {
+  return patientsStore
+    .filter(patient => patientBelongsToPractitioner(patient, practitionerId))
+    .map(toCoreView)
 }
 
 export function getById(practitionerId: string, patientId: string) {
@@ -73,4 +80,3 @@ export function update(
   patientsStore[index] = parsed
   return parsed
 }
-

@@ -369,3 +369,13 @@ Phase C.4 introduced `src/lib/repositories/googleIntegrationsRepository.ts`.
 This repository currently wraps the existing in-memory Google integration and OAuth state helpers. Runtime persistence is still not PostgreSQL, no Google tokens are persisted to PostgreSQL, and no Drizzle-backed repository internals were added.
 
 Google integration API routes and Google auth/sync helpers now use the repository seam where safe while preserving OAuth, selected calendar, status, import preview, reconcile, booking sync fallback behavior, practitioner scoping, and response shapes.
+
+## Implementation note: Phase C completion audit
+
+The Phase C repository seam audit confirmed that the expected repository files are in place for patients, services, bookings, sessions, lifecycle, Trash, and Google integrations.
+
+All domain repositories currently wrap existing in-memory stores/helpers. Runtime persistence is still not PostgreSQL, no Drizzle-backed repository internals were added, and domain API routes do not import Drizzle directly. The existing `/api/health` endpoint remains a separate database connectivity probe through `src/lib/db.ts`; it is not used for domain runtime persistence.
+
+As part of the audit, Google import preview/reconcile access was moved behind existing patient, service, and booking repository seams while preserving the previous in-memory filtering and reconcile behavior. Repository tests cover practitioner scoping, active/archived/disabled filtering, Trash exclusion/grouping, booking availability statuses, linked and walk-in sessions, lifecycle restore behavior, and Google public status/scoping behavior.
+
+Phase D can begin with the simplest database-backed repository internals. Recommended order remains: practitioners first, then services, then patients. Remaining risks before deeper migrations are ID mapping consistency, preserving FHIR-like patient response shapes, service history snapshots on bookings/sessions, and keeping Google/lifecycle side effects isolated from early Drizzle-backed domains.

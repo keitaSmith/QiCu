@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { BOOKINGS } from '@/data/bookings'
-import { patientsStore } from '@/data/patientsStore'
-import { servicesStore } from '@/data/servicesStore'
 import { listGoogleCalendarEvents } from '@/lib/google/calendarApi'
 import { buildGoogleBookingImportPreview } from '@/lib/google/eventMapping'
 import type { GoogleImportMode } from '@/lib/google/types'
-import { patientBelongsToPractitioner, serviceBelongsToPractitioner, getPractitionerIdFromRequest } from '@/lib/practitioners'
-import { toCoreView } from '@/models/patient.coreView'
+import { getPractitionerIdFromRequest } from '@/lib/practitioners'
 import { getErrorMessage } from '@/lib/errors'
+import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
 import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrationsRepository'
+import * as patientsRepository from '@/lib/repositories/patientsRepository'
+import * as servicesRepository from '@/lib/repositories/servicesRepository'
 
 function startOfTodayIso() {
   const now = new Date()
@@ -48,9 +47,9 @@ export async function GET(req: NextRequest) {
     const rows = buildGoogleBookingImportPreview(
       events,
       integration.selectedCalendarId,
-      patientsStore.filter(patient => patientBelongsToPractitioner(patient, practitionerId)).map(toCoreView),
-      servicesStore.filter(service => serviceBelongsToPractitioner(service, practitionerId)),
-      BOOKINGS.filter(booking => booking.practitionerId === practitionerId),
+      patientsRepository.listGoogleImportCandidates(practitionerId),
+      servicesRepository.listGoogleImportCandidates(practitionerId),
+      bookingsRepository.listGoogleImportPreviewBookings(practitionerId),
       importMode,
     )
 

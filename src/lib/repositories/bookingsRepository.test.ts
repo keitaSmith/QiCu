@@ -9,7 +9,10 @@ import {
   findAvailabilityBlockingBookings,
   getById,
   listByPatient,
+  listGoogleImportPreviewBookings,
+  listGoogleLinkedBookingsForReconcile,
   listByPractitioner,
+  reconcileGoogleLinkedBooking,
   updateWithOverlapCheck,
 } from './bookingsRepository'
 
@@ -45,6 +48,11 @@ function booking(input: Partial<Booking> = {}): Booking {
     end: input.end ?? '2026-05-10T10:45:00.000Z',
     status: input.status ?? 'confirmed',
     trashMetadata: input.trashMetadata,
+    externalSource: input.externalSource,
+    externalCalendarId: input.externalCalendarId,
+    externalEventId: input.externalEventId,
+    externalSyncStatus: input.externalSyncStatus,
+    externalLastSyncedAt: input.externalLastSyncedAt,
   }
 }
 
@@ -144,4 +152,56 @@ test('cancelled booking reschedule is rejected unless reactivated', () => {
     throw new Error('Expected booking to be updated')
   }
   assert.equal(updated.booking.status, 'confirmed')
+})
+
+test('Google import preview and reconcile helpers preserve scoped in-memory behavior', () => {
+  cleanup()
+  const linked = booking({
+    id: 'b-repo-google-linked',
+    externalSource: 'google',
+    externalCalendarId: 'calendar-repo',
+    externalEventId: 'event-repo',
+  })
+  const trashed = booking({
+    id: 'b-repo-google-trashed',
+    trashMetadata: trashMetadata(),
+    externalSource: 'google',
+    externalCalendarId: 'calendar-repo',
+    externalEventId: 'event-trash',
+  })
+  const other = booking({
+    id: 'b-repo-google-other',
+    practitionerId: otherPractitionerId,
+    externalSource: 'google',
+    externalCalendarId: 'calendar-repo',
+    externalEventId: 'event-other',
+  })
+  BOOKINGS.push(linked, trashed, other)
+
+  assert.deepEqual(
+    listGoogleImportPreviewBookings(practitionerId).map(item => item.id).sort(),
+    [linked.id, trashed.id].sort(),
+  )
+  assert.deepEqual(
+    listGoogleLinkedBookingsForReconcile(practitionerId).map(item => item.id).sort(),
+    [linked.id, trashed.id].sort(),
+  )
+
+  const result = reconcileGoogleLinkedBooking(
+    practitionerId,
+    linked.id,
+    {
+      id: 'event-repo',
+      start: { dateTime: '2026-05-10T11:00:00.000Z' },
+      end: { dateTime: '2026-05-10T11:45:00.000Z' },
+      location: 'Room 2',
+    },
+    { now: new Date('2026-05-06T12:00:00.000Z') },
+  )
+
+  assert.equal(result, 'updated')
+  assert.equal(linked.start, '2026-05-10T11:00:00.000Z')
+  assert.equal(linked.resource, 'Room 2')
+  assert.equal(linked.externalSyncStatus, 'synced')
+  assert.equal(linked.externalLastSyncedAt, '2026-05-06T12:00:00.000Z')
 })

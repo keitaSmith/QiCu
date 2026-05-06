@@ -2,6 +2,7 @@ import { BOOKINGS } from '@/data/bookings'
 import { applyBookingStatus } from '@/lib/bookingStatus'
 import { hasBookingOverlap, isBookingAvailabilityBlocking } from '@/lib/bookingValidation'
 import { isTrashed, moveBookingToTrash } from '@/lib/dataLifecycle'
+import type { GoogleCalendarEvent } from '@/lib/google/calendarApi'
 import type { Booking, BookingStatus } from '@/models/booking'
 
 export type CreateBookingInput = {
@@ -43,6 +44,20 @@ export function listByPractitioner(practitionerId: string) {
 
 export function listByPatient(practitionerId: string, patientId: string) {
   return listByPractitioner(practitionerId).filter(booking => booking.patientId === patientId)
+}
+
+export function listGoogleImportPreviewBookings(practitionerId: string) {
+  return BOOKINGS.filter(booking => booking.practitionerId === practitionerId)
+}
+
+export function listGoogleLinkedBookingsForReconcile(practitionerId: string) {
+  return BOOKINGS.filter(
+    booking =>
+      booking.practitionerId === practitionerId &&
+      booking.externalSource === 'google' &&
+      booking.externalCalendarId &&
+      booking.externalEventId,
+  )
 }
 
 export function getById(practitionerId: string, bookingId: string) {
@@ -172,3 +187,56 @@ export function moveToTrash(practitionerId: string, bookingId: string) {
   return moveBookingToTrash(bookingId, practitionerId)
 }
 
+export function reconcileGoogleLinkedBooking(
+  practitionerId: string,
+  bookingId: string,
+  event: GoogleCalendarEvent | null,
+  options: { now?: Date } = {},
+) {
+  const booking = BOOKINGS.find(
+    item =>
+      item.id === bookingId &&
+      item.practitionerId === practitionerId &&
+      item.externalSource === 'google' &&
+      item.externalCalendarId &&
+      item.externalEventId,
+  )
+  if (!booking) return 'skipped' as const
+
+  const now = (options.now ?? new Date()).toISOString()
+
+  if (!event || event.status === 'cancelled') {
+    if (booking.status !== 'cancelled') {
+      booking.status = 'cancelled'
+      booking.statusUpdatedAt = now
+      booking.externalSyncStatus = 'synced'
+      booking.externalLastSyncedAt = now
+      return 'cancelled' as const
+    }
+
+    return 'unchanged' as const
+  }
+
+  let changed = false
+  const start = event.start?.dateTime ? new Date(event.start.dateTime).toISOString() : booking.start
+  const end = event.end?.dateTime ? new Date(event.end.dateTime).toISOString() : booking.end
+  const location = (event.location ?? '').trim() || undefined
+
+  if (start && booking.start !== start) {
+    booking.start = start
+    changed = true
+  }
+  if (end && booking.end !== end) {
+    booking.end = end
+    changed = true
+  }
+  if ((booking.resource ?? '') !== (location ?? '')) {
+    booking.resource = location
+    changed = true
+  }
+
+  booking.externalSyncStatus = 'synced'
+  booking.externalLastSyncedAt = now
+
+  return changed ? ('updated' as const) : ('unchanged' as const)
+}

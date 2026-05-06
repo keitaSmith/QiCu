@@ -1,5 +1,6 @@
 import { servicesStore } from '@/data/servicesStore'
 import { isTrashed } from '@/lib/dataLifecycle'
+import { serviceBelongsToPractitioner } from '@/lib/practitioners'
 import type { Service } from '@/models/service'
 
 function slugify(value: string) {
@@ -20,6 +21,10 @@ export function listActiveByPractitioner(practitionerId: string) {
   return listByPractitionerIncludingDisabled(practitionerId).filter(
     service => service.active,
   )
+}
+
+export function listGoogleImportCandidates(practitionerId: string) {
+  return servicesStore.filter(service => serviceBelongsToPractitioner(service, practitionerId))
 }
 
 export function getById(practitionerId: string, serviceId: string) {
@@ -130,4 +135,3 @@ export function update(
 export function disable(practitionerId: string, serviceId: string) {
   return update(practitionerId, serviceId, { active: false })
 }
-

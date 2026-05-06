@@ -9,6 +9,7 @@ import {
   create,
   getById,
   listActiveByPractitioner,
+  listGoogleImportCandidates,
   update,
 } from './patientsRepository'
 
@@ -100,3 +101,16 @@ test('update respects practitioner scope and preserves patient id', () => {
   assert.equal(updated?.name[0].text, 'Updated Patient')
 })
 
+test('listGoogleImportCandidates preserves practitioner-scoped preview candidates', () => {
+  cleanup()
+  const active = patient('P-REPO-google-active')
+  const trashed = patient('P-REPO-google-trashed')
+  const other = patient('P-REPO-google-other', otherPractitionerId)
+  trashed.trashMetadata = trashMetadata()
+  patientsStore.push(active, trashed, other)
+
+  assert.deepEqual(
+    listGoogleImportCandidates(practitionerId).map(item => item.id).sort(),
+    [active.id, trashed.id].sort(),
+  )
+})
