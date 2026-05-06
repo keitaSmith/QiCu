@@ -7,11 +7,15 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test --import tsx \"src/**/*.test.ts\""
+    "test": "node --test --import tsx \"src/**/*.test.ts\"",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.9",
     "@heroicons/react": "^2.2.0",
+    "drizzle-orm": "^0.45.2",
     "flag-icons": "^7.5.0",
     "framer-motion": "^12.23.24",
     "jspdf": "^3.0.3",
@@ -32,6 +36,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.21",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "15.5.4",
     "postcss": "^8.5.6",

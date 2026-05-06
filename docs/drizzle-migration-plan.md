@@ -289,6 +289,19 @@ Also add or run:
 
 Phase A should not require route behavior changes, so existing tests should remain stable.
 
+## Phase A implementation note
+
+Phase A was implemented with:
+
+- `drizzle-orm` as a runtime dependency.
+- `drizzle-kit` as a development dependency.
+- Root `drizzle.config.ts`.
+- Split schema files under `src/db/schema/`.
+- A separate Drizzle client in `src/db/client.ts`.
+- Initial generated migration under `src/db/migrations/`.
+
+The generated migration includes the PostgreSQL-specific check constraints and booking availability partial index from the schema files. `src/lib/db.ts` remains unchanged so `/api/health` keeps its existing `pg` pool behavior during transition.
+
 ## Risks and guardrails
 
 Risks:
