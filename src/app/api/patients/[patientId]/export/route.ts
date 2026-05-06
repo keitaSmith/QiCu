@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   const { patientId } = await params
 
   try {
-    const payload = lifecycleRepository.buildPatientExport(practitionerId, patientId)
+    const payload = await lifecycleRepository.buildPatientExport(practitionerId, patientId)
     return NextResponse.json(payload, {
       status: 200,
       headers: {

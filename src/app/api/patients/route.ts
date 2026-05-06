@@ -7,7 +7,7 @@ import * as patientsRepository from '@/lib/repositories/patientsRepository'
 
 export async function GET(req: NextRequest) {
   const practitionerId = await getPractitionerIdFromRequest(req)
-  const patients = patientsRepository.listByPractitionerIncludingArchived(practitionerId)
+  const patients = await patientsRepository.listByPractitionerIncludingArchived(practitionerId)
   return NextResponse.json(patients, { status: 200 })
 }
 
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = (await req.json()) as FhirPatient
-    const parsed = patientsRepository.create(practitionerId, body)
+    const parsed = await patientsRepository.create(practitionerId, body)
     return NextResponse.json(parsed, { status: 201 })
   } catch (err: unknown) {
     if (err instanceof ZodError) {

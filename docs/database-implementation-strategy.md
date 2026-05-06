@@ -409,3 +409,13 @@ The service repository accepts public service IDs from routes and maps them to d
 Because lifecycle/Trash helpers have not moved to Drizzle yet, service rows read or written through Drizzle are mirrored into the existing in-memory service store during this transition. This preserves service disable/delete impact behavior until lifecycle/Trash persistence is migrated.
 
 API routes still do not import Drizzle directly. Local DB-backed services runtime requires the local database to be migrated and seeded first.
+
+## Implementation note: Phase D.3 patients Drizzle runtime foundation
+
+Phase D.3 moved `src/lib/repositories/patientsRepository.ts` to Drizzle-backed runtime persistence when PostgreSQL is available. Practitioners and services remain Drizzle-backed, while bookings, sessions, lifecycle, Trash, and Google integration runtime persistence still use existing in-memory stores/helpers.
+
+Patients keep their existing public IDs such as `P-T-1001` and `P-K-2001`. The database still uses UUID primary keys internally, with a `patients.public_id` compatibility column for public app IDs and seeded ID mapping. The repository maps database rows back to the current FHIR-like patient response shape so patient profile fields, display/contact/search fields, and API response shapes remain stable.
+
+Bookings and sessions continue to reference public patient IDs and remain in-memory. During the transition, DB-backed patient reads and writes are mirrored into `patientsStore`, and patient lifecycle operations narrowly sync archived/trashed/restored patient state back to the database. This keeps archive, delete, restore, export, and active workflow checks consistent until lifecycle/Trash internals move to Drizzle.
+
+API routes still do not import Drizzle directly. Local DB-backed patients runtime requires the local database to be migrated and seeded first.

@@ -15,6 +15,13 @@
       "when": 1778103211341,
       "tag": "0001_wealthy_spyke",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778105584093,
+      "tag": "0002_cultured_archangel",
+      "breakpoints": true
     }
   ]
 }

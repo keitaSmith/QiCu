@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'patientId is required' }, { status: 400 })
   }
 
-  const patient = patientsRepository.getById(practitionerId, patientId)
+  const patient = await patientsRepository.getById(practitionerId, patientId)
   if (!patient) {
     return NextResponse.json({ error: 'Unknown patientId' }, { status: 400 })
   }

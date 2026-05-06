@@ -13,7 +13,7 @@ type RouteParams = {
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const practitionerId = await getPractitionerIdFromRequest(req)
   const { patientId } = await params
-  const patient = patientsRepository.getById(practitionerId, patientId)
+  const patient = await patientsRepository.getById(practitionerId, patientId)
 
   if (!patient) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
@@ -21,7 +21,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
   try {
     const body = (await req.json()) as Partial<FhirPatient>
-    const parsed = patientsRepository.update(practitionerId, patientId, body)
+    const parsed = await patientsRepository.update(practitionerId, patientId, body)
 
     return NextResponse.json(parsed, { status: 200 })
   } catch (err: unknown) {
@@ -43,13 +43,13 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   const practitionerId = await getPractitionerIdFromRequest(req)
   const { patientId } = await params
-  const patient = patientsRepository.getById(practitionerId, patientId)
+  const patient = await patientsRepository.getById(practitionerId, patientId)
 
   if (!patient) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }
 
-  const result = lifecycleRepository.movePatientGraphToTrash(practitionerId, patientId)
+  const result = await lifecycleRepository.movePatientGraphToTrash(practitionerId, patientId)
   return NextResponse.json(
     {
       ok: true,

@@ -12,7 +12,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   const { patientId } = await params
 
   try {
-    const patient = lifecycleRepository.reactivatePatient(practitionerId, patientId)
+    const patient = await lifecycleRepository.reactivatePatient(practitionerId, patientId)
     return NextResponse.json({ ok: true, action: 'reactivated', patient }, { status: 200 })
   } catch {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })

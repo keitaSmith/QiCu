@@ -46,7 +46,7 @@ function trashMetadata(): TrashMetadata {
 
 afterEach(cleanup)
 
-test('listActiveByPractitioner returns only scoped, active, non-trashed patients', () => {
+test('listActiveByPractitioner returns only scoped, active, non-trashed patients', async () => {
   cleanup()
   const active = patient('P-REPO-active')
   const archived = patient('P-REPO-archived', practitionerId, false)
@@ -55,7 +55,7 @@ test('listActiveByPractitioner returns only scoped, active, non-trashed patients
   trashed.trashMetadata = trashMetadata()
   patientsStore.push(active, archived, trashed, other)
 
-  const result = listActiveByPractitioner(practitionerId)
+  const result = await listActiveByPractitioner(practitionerId)
 
   assert.equal(result.some(item => item.id === active.id), true)
   assert.equal(result.some(item => item.id === archived.id), false)
@@ -63,35 +63,35 @@ test('listActiveByPractitioner returns only scoped, active, non-trashed patients
   assert.equal(result.some(item => item.id === other.id), false)
 })
 
-test('getById respects practitioner scope and trash state', () => {
+test('getById respects practitioner scope and trash state', async () => {
   cleanup()
   const scoped = patient('P-REPO-get')
   const trashed = patient('P-REPO-get-trashed')
   trashed.trashMetadata = trashMetadata()
   patientsStore.push(scoped, trashed)
 
-  assert.equal(getById(practitionerId, scoped.id)?.id, scoped.id)
-  assert.equal(getById(otherPractitionerId, scoped.id), null)
-  assert.equal(getById(practitionerId, trashed.id), null)
+  assert.equal((await getById(practitionerId, scoped.id))?.id, scoped.id)
+  assert.equal(await getById(otherPractitionerId, scoped.id), null)
+  assert.equal(await getById(practitionerId, trashed.id), null)
 })
 
-test('create assigns practitioner ownership without changing the input id', () => {
+test('create assigns practitioner ownership without changing the input id', async () => {
   cleanup()
-  const created = create(otherPractitionerId, patient('P-REPO-create', practitionerId))
+  const created = await create(otherPractitionerId, patient('P-REPO-create', practitionerId))
 
   assert.equal(created.id, 'P-REPO-create')
-  assert.equal(getById(otherPractitionerId, created.id)?.id, created.id)
-  assert.equal(getById(practitionerId, created.id), null)
+  assert.equal((await getById(otherPractitionerId, created.id))?.id, created.id)
+  assert.equal(await getById(practitionerId, created.id), null)
 })
 
-test('update respects practitioner scope and preserves patient id', () => {
+test('update respects practitioner scope and preserves patient id', async () => {
   cleanup()
   const existing = patient('P-REPO-update')
   patientsStore.push(existing)
 
-  assert.equal(update(otherPractitionerId, existing.id, { active: false }), null)
+  assert.equal(await update(otherPractitionerId, existing.id, { active: false }), null)
 
-  const updated = update(practitionerId, existing.id, {
+  const updated = await update(practitionerId, existing.id, {
     active: false,
     name: [{ text: 'Updated Patient', family: 'Patient', given: ['Updated'] }],
   })
@@ -101,7 +101,7 @@ test('update respects practitioner scope and preserves patient id', () => {
   assert.equal(updated?.name[0].text, 'Updated Patient')
 })
 
-test('listGoogleImportCandidates preserves practitioner-scoped preview candidates', () => {
+test('listGoogleImportCandidates preserves practitioner-scoped preview candidates', async () => {
   cleanup()
   const active = patient('P-REPO-google-active')
   const trashed = patient('P-REPO-google-trashed')
@@ -110,7 +110,19 @@ test('listGoogleImportCandidates preserves practitioner-scoped preview candidate
   patientsStore.push(active, trashed, other)
 
   assert.deepEqual(
-    listGoogleImportCandidates(practitionerId).map(item => item.id).sort(),
+    (await listGoogleImportCandidates(practitionerId)).map(item => item.id).sort(),
     [active.id, trashed.id].sort(),
   )
+})
+
+test('seeded DB patients keep public IDs and FHIR-like shape when available', async () => {
+  const active = await listActiveByPractitioner('prac-tom-cook')
+  const alice = await getById('prac-tom-cook', 'P-T-1001')
+
+  assert.equal(active.some(item => item.id === 'P-T-1001'), true)
+  assert.equal(active.some(item => /^[0-9a-f-]{36}$/i.test(item.id)), false)
+  assert.equal(alice?.resourceType, 'Patient')
+  assert.equal(alice?.id, 'P-T-1001')
+  assert.equal(alice?.extension?.some(item => item.valueString === 'prac-tom-cook'), true)
+  assert.equal(await getById('prac-keita-smith', 'P-T-1001'), null)
 })

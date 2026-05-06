@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     const rows = buildGoogleBookingImportPreview(
       events,
       integration.selectedCalendarId,
-      patientsRepository.listGoogleImportCandidates(practitionerId),
+      await patientsRepository.listGoogleImportCandidates(practitionerId),
       await servicesRepository.listGoogleImportCandidates(practitionerId),
       bookingsRepository.listGoogleImportPreviewBookings(practitionerId),
       importMode,

@@ -187,6 +187,7 @@ function buildSearchText(source: DemoPatientSource) {
 
 export const demoPatients = demoPatientSources.map(source => ({
   id: demoPatientIds[source.currentId],
+  publicId: source.currentId,
   practitionerId: demoPractitionerIds[source.practitionerCurrentId],
   active: source.active,
   firstName: source.firstName,
@@ -200,4 +201,3 @@ export const demoPatients = demoPatientSources.map(source => ({
   fhirJson: buildFhirJson(source),
   searchText: buildSearchText(source),
 })) satisfies Array<typeof patients.$inferInsert>
-

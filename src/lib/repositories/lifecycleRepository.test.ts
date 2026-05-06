@@ -103,38 +103,38 @@ function addService(input: Partial<Service> = {}): Service {
 
 afterEach(cleanup)
 
-test('patient impact, archive, reactivate, and export preserve lifecycle behavior', () => {
+test('patient impact, archive, reactivate, and export preserve lifecycle behavior', async () => {
   cleanup()
   const patient = addPatient()
   addBooking({ id: 'b-repo-life-past', start: '2026-05-01T10:00:00.000Z', end: '2026-05-01T10:45:00.000Z' })
   addBooking({ id: 'b-repo-life-future', start: new Date(Date.now() + 86_400_000).toISOString() })
   addSession({ id: 'S-REPO-LIFE-export' })
 
-  const impact = getPatientLifecycleImpact(practitionerId, patient.id)
+  const impact = await getPatientLifecycleImpact(practitionerId, patient.id)
   assert.equal(impact.sessions, 1)
   assert.equal(impact.bookings, 2)
 
-  const archived = archivePatient(practitionerId, patient.id)
+  const archived = await archivePatient(practitionerId, patient.id)
   assert.equal(archived.patient.active, false)
   assert.equal(isArchived(patient), true)
   assert.equal(isTrashed(patient), false)
 
-  const reactivated = reactivatePatient(practitionerId, patient.id)
+  const reactivated = await reactivatePatient(practitionerId, patient.id)
   assert.equal(reactivated.active, true)
 
-  const exported = buildPatientExport(practitionerId, patient.id)
+  const exported = await buildPatientExport(practitionerId, patient.id)
   assert.equal(exported.patient.id, patient.id)
   assert.equal(exported.bookings.length, 2)
   assert.equal(exported.sessions.length, 1)
 })
 
-test('patient data delete and restore operate as one deletion group', () => {
+test('patient data delete and restore operate as one deletion group', async () => {
   cleanup()
   const patient = addPatient()
   const booking = addBooking({ id: 'b-repo-life-group' })
   const session = addSession({ id: 'S-REPO-LIFE-group' })
 
-  const deleted = movePatientGraphToTrash(practitionerId, patient.id, {
+  const deleted = await movePatientGraphToTrash(practitionerId, patient.id, {
     now: new Date('2026-05-04T12:00:00.000Z'),
   })
 
@@ -142,7 +142,7 @@ test('patient data delete and restore operate as one deletion group', () => {
   assert.equal(booking.trashMetadata?.deletionGroupId, deleted.deletionGroupId)
   assert.equal(session.trashMetadata?.deletionGroupId, deleted.deletionGroupId)
 
-  restoreDeletionGroup(practitionerId, deleted.deletionGroupId, {
+  await restoreDeletionGroup(practitionerId, deleted.deletionGroupId, {
     now: new Date('2026-05-20T12:00:00.000Z'),
   })
 
@@ -151,24 +151,24 @@ test('patient data delete and restore operate as one deletion group', () => {
   assert.equal(isTrashed(session), false)
 })
 
-test('restore window and practitioner scoping are preserved', () => {
+test('restore window and practitioner scoping are preserved', async () => {
   cleanup()
   const patient = addPatient()
-  const deleted = movePatientGraphToTrash(practitionerId, patient.id, {
+  const deleted = await movePatientGraphToTrash(practitionerId, patient.id, {
     now: new Date('2026-05-04T12:00:00.000Z'),
   })
 
-  assert.throws(
+  await assert.rejects(
     () => restoreDeletionGroup(practitionerId, deleted.deletionGroupId, { now: new Date('2026-06-10T12:00:00.000Z') }),
     /expired/,
   )
-  assert.throws(
+  await assert.rejects(
     () => restoreDeletionGroup('other-practitioner', deleted.deletionGroupId, { now: new Date('2026-05-20T12:00:00.000Z') }),
     /not found/,
   )
 })
 
-test('individual booking and session Trash behavior preserves runtime links', () => {
+test('individual booking and session Trash behavior preserves runtime links', async () => {
   cleanup()
   addPatient()
   const booking = addBooking({ id: 'b-repo-life-booking-delete', sessionId: 'S-REPO-LIFE-linked' })
@@ -178,14 +178,14 @@ test('individual booking and session Trash behavior preserves runtime links', ()
   assert.equal(isTrashed(booking), true)
   assert.equal(session.bookingId, null)
 
-  restoreDeletionGroup(practitionerId, deletedBooking.deletionGroupId)
+  await restoreDeletionGroup(practitionerId, deletedBooking.deletionGroupId)
   assert.equal(isTrashed(booking), false)
 
   const deletedSession = moveSessionToTrash(practitionerId, session.id)
   assert.equal(isTrashed(session), true)
   assert.equal(booking.sessionId, undefined)
 
-  restoreDeletionGroup(practitionerId, deletedSession.deletionGroupId)
+  await restoreDeletionGroup(practitionerId, deletedSession.deletionGroupId)
   assert.equal(isTrashed(session), false)
 })
 
@@ -202,12 +202,12 @@ test('service disable is separate from service Trash delete', async () => {
   assert.equal(deleted.impact.bookings, 0)
 })
 
-test('purgeExpiredTrash removes expired records and keeps records inside restore period', () => {
+test('purgeExpiredTrash removes expired records and keeps records inside restore period', async () => {
   cleanup()
   const expiredPatient = addPatient('P-REPO-LIFE-expired')
   const retainedPatient = addPatient('P-REPO-LIFE-retained')
-  movePatientGraphToTrash(practitionerId, expiredPatient.id, { now: new Date('2026-04-01T12:00:00.000Z') })
-  movePatientGraphToTrash(practitionerId, retainedPatient.id, { now: new Date('2026-05-01T12:00:00.000Z') })
+  await movePatientGraphToTrash(practitionerId, expiredPatient.id, { now: new Date('2026-04-01T12:00:00.000Z') })
+  await movePatientGraphToTrash(practitionerId, retainedPatient.id, { now: new Date('2026-05-01T12:00:00.000Z') })
 
   const removed = purgeExpiredTrash({ now: new Date('2026-05-04T12:00:00.000Z') })
 

@@ -20,7 +20,7 @@ export async function POST(
   const practitionerId = await getPractitionerIdFromRequest(req)
   const { patientId } = await context.params
 
-  const patient = patientsRepository.getById(practitionerId, patientId)
+  const patient = await patientsRepository.getById(practitionerId, patientId)
   if (!patient) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }

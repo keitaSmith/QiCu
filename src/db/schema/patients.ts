@@ -8,6 +8,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
 
@@ -18,6 +19,7 @@ export const patients = pgTable(
   'patients',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    publicId: text('public_id'),
     practitionerId: uuid('practitioner_id')
       .notNull()
       .references(() => practitioners.id),
@@ -45,6 +47,7 @@ export const patients = pgTable(
     deletionReason: text('deletion_reason'),
   },
   table => [
+    uniqueIndex('patients_practitioner_public_id_unique').on(table.practitionerId, table.publicId),
     index('patients_practitioner_id_idx').on(table.practitionerId),
     index('patients_practitioner_active_idx').on(table.practitionerId, table.active),
     index('patients_practitioner_deleted_at_idx').on(table.practitionerId, table.deletedAt),

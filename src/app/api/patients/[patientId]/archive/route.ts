@@ -13,7 +13,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   const body = await req.json().catch(() => ({})) as { cancelFutureBookings?: boolean }
 
   try {
-    const result = lifecycleRepository.archivePatient(practitionerId, patientId, {
+    const result = await lifecycleRepository.archivePatient(practitionerId, patientId, {
       cancelFutureBookings: body.cancelFutureBookings === true,
     })
     return NextResponse.json(
