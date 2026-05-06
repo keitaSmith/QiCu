@@ -6,7 +6,7 @@ import {
   deleteGoogleCalendarEvent,
   updateGoogleCalendarEvent,
 } from '@/lib/google/calendarApi'
-import { getGoogleIntegration } from '@/lib/google/store'
+import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrationsRepository'
 import type { Booking } from '@/models/booking'
 import { displayName } from '@/models/patient'
 
@@ -77,7 +77,7 @@ export async function syncGoogleOnBookingCreate(
     return booking
   }
 
-  const integration = getGoogleIntegration(booking.practitionerId)
+  const integration = googleIntegrationsRepository.getIntegration(booking.practitionerId)
   const calendarId = booking.externalCalendarId || integration.selectedCalendarId
 
   if (!integration.connected || !calendarId) {
@@ -118,7 +118,7 @@ export async function syncGoogleOnBookingUpdate(
   if (!booking.externalEventId) return booking
   if (booking.externalSource === 'google') return booking
 
-  const integration = getGoogleIntegration(booking.practitionerId)
+  const integration = googleIntegrationsRepository.getIntegration(booking.practitionerId)
   if (!integration.connected) return booking
 
   const calendarId = booking.externalCalendarId || integration.selectedCalendarId
@@ -168,7 +168,7 @@ export async function syncGoogleOnBookingDelete(
   if (!booking.externalEventId) return true
   if (booking.externalSource === 'google') return true
 
-  const integration = getGoogleIntegration(booking.practitionerId)
+  const integration = googleIntegrationsRepository.getIntegration(booking.practitionerId)
   if (!integration.connected) return true
 
   const calendarId = booking.externalCalendarId || integration.selectedCalendarId

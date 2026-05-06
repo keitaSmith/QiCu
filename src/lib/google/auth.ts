@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server'
 
-import { createGoogleOAuthState, getGoogleIntegration, saveGoogleIntegration } from '@/lib/google/store'
 import type { GoogleIntegrationRecord } from '@/lib/google/types'
+import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrationsRepository'
 
 const GOOGLE_AUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
@@ -37,7 +37,7 @@ export function getGoogleRedirectUri(req: NextRequest | Request) {
 
 export function buildGoogleAuthUrl(practitionerId: string, req: NextRequest) {
   const clientId = requireEnv('GOOGLE_CLIENT_ID')
-  const state = createGoogleOAuthState(practitionerId)
+  const state = googleIntegrationsRepository.createOAuthState(practitionerId)
   const redirectUri = getGoogleRedirectUri(req)
 
   const params = new URLSearchParams({
@@ -104,7 +104,7 @@ export async function fetchGoogleUserEmail(accessToken: string) {
 export async function ensureFreshGoogleAccessToken(
   practitionerId: string,
 ): Promise<GoogleIntegrationRecord> {
-  const record = getGoogleIntegration(practitionerId)
+  const record = googleIntegrationsRepository.getIntegration(practitionerId)
 
   if (!record.connected || !record.accessToken) {
     throw new Error('Google Calendar is not connected for this practitioner.')
@@ -149,6 +149,6 @@ export async function ensureFreshGoogleAccessToken(
     lastError: null,
   }
 
-  saveGoogleIntegration(updated)
+  googleIntegrationsRepository.saveIntegration(practitionerId, updated)
   return updated
 }

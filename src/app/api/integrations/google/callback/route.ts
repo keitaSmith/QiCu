@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { exchangeGoogleAuthCode, fetchGoogleUserEmail } from '@/lib/google/auth'
-import { consumeGoogleOAuthState, saveGoogleIntegration } from '@/lib/google/store'
 import { getErrorMessage } from '@/lib/errors'
+import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrationsRepository'
 
 function closeWindowHtml(message: string, success: boolean) {
   const safeMessage = message.replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  const pending = consumeGoogleOAuthState(state)
+  const pending = googleIntegrationsRepository.consumeOAuthState(state)
   if (!pending) {
     return new NextResponse(closeWindowHtml('Google auth state expired. Please try again.', false), {
       status: 400,
@@ -56,8 +56,7 @@ export async function GET(req: NextRequest) {
     const tokens = await exchangeGoogleAuthCode(code, req)
     const email = await fetchGoogleUserEmail(tokens.access_token)
 
-    saveGoogleIntegration({
-      practitionerId: pending.practitionerId,
+    googleIntegrationsRepository.saveIntegration(pending.practitionerId, {
       connected: true,
       googleUserEmail: email,
       accessToken: tokens.access_token,

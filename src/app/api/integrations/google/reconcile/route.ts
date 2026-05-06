@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { BOOKINGS } from '@/data/bookings'
 import { getGoogleCalendarEvent } from '@/lib/google/calendarApi'
-import { getGoogleIntegration } from '@/lib/google/store'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrationsRepository'
 
 export async function POST(req: NextRequest) {
   const practitionerId = getPractitionerIdFromRequest(req)
-  const integration = getGoogleIntegration(practitionerId)
+  const integration = googleIntegrationsRepository.getIntegration(practitionerId)
 
   if (!integration.connected || !integration.selectedCalendarId) {
     return NextResponse.json({ error: 'Connect Google Calendar and choose a calendar first.' }, { status: 400 })

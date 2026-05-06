@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { hasGoogleCalendarEnv } from '@/lib/google/auth'
-import { getGoogleIntegration } from '@/lib/google/store'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrationsRepository'
 
 export async function GET(req: NextRequest) {
   const practitionerId = getPractitionerIdFromRequest(req)
-  const integration = getGoogleIntegration(practitionerId)
+  const status = googleIntegrationsRepository.getStatus(practitionerId)
 
   return NextResponse.json(
     {
-      connected: integration.connected,
-      googleUserEmail: integration.googleUserEmail,
-      selectedCalendarId: integration.selectedCalendarId,
-      selectedCalendarName: integration.selectedCalendarName,
+      connected: status.connected,
+      googleUserEmail: status.googleUserEmail,
+      selectedCalendarId: status.selectedCalendarId,
+      selectedCalendarName: status.selectedCalendarName,
       canConnect: hasGoogleCalendarEnv(),
-      lastError: integration.lastError ?? null,
+      lastError: status.lastError,
     },
     { status: 200 },
   )

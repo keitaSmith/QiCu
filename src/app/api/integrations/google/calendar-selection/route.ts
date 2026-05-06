@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { getGoogleIntegration, saveGoogleIntegration } from '@/lib/google/store'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrationsRepository'
 
 type Body = {
   calendarId?: string
@@ -17,15 +17,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'calendarId is required' }, { status: 400 })
   }
 
-  const integration = getGoogleIntegration(practitionerId)
+  const integration = googleIntegrationsRepository.getIntegration(practitionerId)
   if (!integration.connected) {
     return NextResponse.json({ error: 'Google Calendar is not connected' }, { status: 400 })
   }
 
-  const updated = saveGoogleIntegration({
-    ...integration,
-    selectedCalendarId: calendarId,
-    selectedCalendarName: body.calendarName?.trim() || calendarId,
+  const updated = googleIntegrationsRepository.saveSelectedCalendar(practitionerId, {
+    calendarId,
+    calendarName: body.calendarName,
   })
 
   return NextResponse.json(updated, { status: 200 })

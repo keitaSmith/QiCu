@@ -361,3 +361,11 @@ Phase C.3 introduced `src/lib/repositories/lifecycleRepository.ts` and `src/lib/
 These repositories currently wrap the existing in-memory lifecycle and Trash helpers. Runtime persistence is still not PostgreSQL, no Drizzle-backed repository internals were added, and grouped patient Trash behavior remains unchanged.
 
 Lifecycle and Trash API routes now use the repository seam where safe while preserving archive, delete, restore, purge, export, Trash grouping, Google Calendar sync ordering, status codes, and response shapes.
+
+## Implementation note: Phase C.4 Google integration repository foundation
+
+Phase C.4 introduced `src/lib/repositories/googleIntegrationsRepository.ts`.
+
+This repository currently wraps the existing in-memory Google integration and OAuth state helpers. Runtime persistence is still not PostgreSQL, no Google tokens are persisted to PostgreSQL, and no Drizzle-backed repository internals were added.
+
+Google integration API routes and Google auth/sync helpers now use the repository seam where safe while preserving OAuth, selected calendar, status, import preview, reconcile, booking sync fallback behavior, practitioner scoping, and response shapes.
