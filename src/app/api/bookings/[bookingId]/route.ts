@@ -3,6 +3,7 @@ import type { BookingStatus } from '@/models/booking'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
 import { syncGoogleOnBookingDelete, syncGoogleOnBookingUpdate } from '@/lib/google/sync'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
+import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
 import * as servicesRepository from '@/lib/repositories/servicesRepository'
 
 type UpdateBookingBody = {
@@ -131,10 +132,7 @@ export async function DELETE(
 
   await syncGoogleOnBookingDelete(booking, req)
 
-  const result = bookingsRepository.moveToTrash(practitionerId, bookingId)
-  if (!result) {
-    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
-  }
+  const result = lifecycleRepository.moveBookingToTrash(practitionerId, bookingId)
 
   return NextResponse.json(
     {

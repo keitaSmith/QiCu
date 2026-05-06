@@ -3,8 +3,8 @@ import { ZodError } from 'zod'
 
 import type { FhirPatient } from '@/models/patient'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
-import { movePatientGraphToTrash } from '@/lib/dataLifecycle'
 import * as patientsRepository from '@/lib/repositories/patientsRepository'
+import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
 
 type RouteParams = {
   params: Promise<{ patientId: string }>
@@ -49,7 +49,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }
 
-  const result = movePatientGraphToTrash(patientId, practitionerId)
+  const result = lifecycleRepository.movePatientGraphToTrash(practitionerId, patientId)
   return NextResponse.json(
     {
       ok: true,

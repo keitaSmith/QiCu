@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
+import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
 import * as servicesRepository from '@/lib/repositories/servicesRepository'
 import * as sessionsRepository from '@/lib/repositories/sessionsRepository'
 
@@ -105,10 +106,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 
-  const result = sessionsRepository.moveToTrash(practitionerId, sessionId)
-  if (!result) {
-    return NextResponse.json({ error: 'Session not found' }, { status: 404 })
-  }
+  const result = lifecycleRepository.moveSessionToTrash(practitionerId, sessionId)
 
   return NextResponse.json(
     {

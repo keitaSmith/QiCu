@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import type { Service } from '@/models/service'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
-import { getServiceLifecycleImpact, moveServiceToTrash } from '@/lib/dataLifecycle'
+import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
 import * as servicesRepository from '@/lib/repositories/servicesRepository'
 
 type RouteParams = {
@@ -77,8 +77,8 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
   }
 
-  const impact = getServiceLifecycleImpact(serviceId, practitionerId)
-  const result = moveServiceToTrash(serviceId, practitionerId)
+  const impact = lifecycleRepository.getServiceLifecycleImpact(practitionerId, serviceId)
+  const result = lifecycleRepository.moveServiceToTrash(practitionerId, serviceId)
   return NextResponse.json(
     {
       ok: true,

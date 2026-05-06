@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { listTrash } from '@/lib/dataLifecycle'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import * as trashRepository from '@/lib/repositories/trashRepository'
 
 export async function GET(req: NextRequest) {
   const practitionerId = getPractitionerIdFromRequest(req)
-  return NextResponse.json(listTrash(practitionerId), { status: 200 })
+  return NextResponse.json(trashRepository.listRawTrash(practitionerId), { status: 200 })
 }

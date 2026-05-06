@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { buildPatientFullExport } from '@/lib/dataLifecycle'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
 
 type RouteParams = {
   params: Promise<{ patientId: string }>
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   const { patientId } = await params
 
   try {
-    const payload = buildPatientFullExport(patientId, practitionerId)
+    const payload = lifecycleRepository.buildPatientExport(practitionerId, patientId)
     return NextResponse.json(payload, {
       status: 200,
       headers: {

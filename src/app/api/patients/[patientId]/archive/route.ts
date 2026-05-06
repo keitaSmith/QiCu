@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { archivePatient } from '@/lib/dataLifecycle'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
 
 type RouteParams = {
   params: Promise<{ patientId: string }>
@@ -13,7 +13,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   const body = await req.json().catch(() => ({})) as { cancelFutureBookings?: boolean }
 
   try {
-    const result = archivePatient(patientId, practitionerId, {
+    const result = lifecycleRepository.archivePatient(practitionerId, patientId, {
       cancelFutureBookings: body.cancelFutureBookings === true,
     })
     return NextResponse.json(

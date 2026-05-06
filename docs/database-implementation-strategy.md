@@ -353,3 +353,11 @@ Phase C.2 introduced `src/lib/repositories/bookingsRepository.ts` and `src/lib/r
 These repositories currently wrap the existing in-memory booking and session stores. Runtime persistence is still not PostgreSQL, no Drizzle-backed repository internals were added, and route handlers do not import Drizzle for runtime data access.
 
 The booking and session API routes now use the repository seam where safe while preserving existing validation, Google Calendar sync behavior, lifecycle/Trash helpers, status semantics, and response shapes. The booking time picker also now focuses the nearest future day with available slots when the initially selected day has no slots, while keeping day/time selection behavior explicit.
+
+## Implementation note: Phase C.3 lifecycle/Trash repository foundation
+
+Phase C.3 introduced `src/lib/repositories/lifecycleRepository.ts` and `src/lib/repositories/trashRepository.ts`.
+
+These repositories currently wrap the existing in-memory lifecycle and Trash helpers. Runtime persistence is still not PostgreSQL, no Drizzle-backed repository internals were added, and grouped patient Trash behavior remains unchanged.
+
+Lifecycle and Trash API routes now use the repository seam where safe while preserving archive, delete, restore, purge, export, Trash grouping, Google Calendar sync ordering, status codes, and response shapes.
