@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 
-import { patientsStore } from '@/data/patientsStore'
 import type { FhirPatient } from '@/models/patient'
-import { FhirPatientSchema } from '@/schemas/fhir/patient'
-import {
-  getPractitionerIdFromRequest,
-  patientBelongsToPractitioner,
-  setPatientPractitionerId,
-} from '@/lib/practitioners'
-import { isTrashed, movePatientGraphToTrash } from '@/lib/dataLifecycle'
+import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { movePatientGraphToTrash } from '@/lib/dataLifecycle'
+import * as patientsRepository from '@/lib/repositories/patientsRepository'
 
 type RouteParams = {
   params: Promise<{ patientId: string }>
@@ -18,33 +13,15 @@ type RouteParams = {
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { patientId } = await params
-  const index = patientsStore.findIndex(
-    patient => patient.id === patientId && patientBelongsToPractitioner(patient, practitionerId) && !isTrashed(patient),
-  )
+  const patient = patientsRepository.getById(practitionerId, patientId)
 
-  if (index === -1) {
+  if (!patient) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }
 
   try {
-    const safeJson = { ...((await req.json()) as Partial<FhirPatient>) }
-    delete safeJson.trashMetadata
-    const merged: FhirPatient = setPatientPractitionerId(
-      {
-        ...patientsStore[index],
-        ...safeJson,
-        id: patientId,
-        meta: {
-          ...(patientsStore[index].meta ?? {}),
-          ...(safeJson?.meta ?? {}),
-          lastUpdated: new Date().toISOString(),
-        },
-      },
-      practitionerId,
-    )
-
-    const parsed = FhirPatientSchema.parse(merged)
-    patientsStore[index] = parsed
+    const body = (await req.json()) as Partial<FhirPatient>
+    const parsed = patientsRepository.update(practitionerId, patientId, body)
 
     return NextResponse.json(parsed, { status: 200 })
   } catch (err: unknown) {
@@ -66,11 +43,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { patientId } = await params
-  const index = patientsStore.findIndex(
-    patient => patient.id === patientId && patientBelongsToPractitioner(patient, practitionerId) && !isTrashed(patient),
-  )
+  const patient = patientsRepository.getById(practitionerId, patientId)
 
-  if (index === -1) {
+  if (!patient) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }
 

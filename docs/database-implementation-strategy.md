@@ -337,3 +337,11 @@ Important:
 Install and configure Drizzle/Drizzle Kit, create the initial schema files and first migration draft, but do not rewrite application routes yet.
 
 The next Codex task should implement Phase A only: add Drizzle packages/configuration, create schema files, generate or draft the first migration, and preserve existing runtime behavior.
+
+## Implementation note: Phase C patient/service repository foundation
+
+Phase C introduced `src/lib/repositories/patientsRepository.ts` and `src/lib/repositories/servicesRepository.ts` as the first repository seam for simple domains.
+
+These repositories currently wrap the existing in-memory stores and helpers. Runtime persistence is still not PostgreSQL, no Drizzle-backed repository internals were added, and the current app behavior remains backed by the existing demo stores.
+
+The patient and service API routes now call the repository seam for direct list, create, read, and update access while lifecycle/Trash behavior continues to use the existing lifecycle helpers. This prepares those repository internals to move to Drizzle later without changing API response shapes now.

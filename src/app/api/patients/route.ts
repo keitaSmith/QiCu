@@ -1,19 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 
-import { patientsStore } from '@/data/patientsStore'
 import type { FhirPatient } from '@/models/patient'
-import { FhirPatientSchema } from '@/schemas/fhir/patient'
-import {
-  getPractitionerIdFromRequest,
-  patientBelongsToPractitioner,
-  setPatientPractitionerId,
-} from '@/lib/practitioners'
-import { isTrashed } from '@/lib/dataLifecycle'
+import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import * as patientsRepository from '@/lib/repositories/patientsRepository'
 
 export async function GET(req: NextRequest) {
   const practitionerId = getPractitionerIdFromRequest(req)
-  const patients = patientsStore.filter(patient => patientBelongsToPractitioner(patient, practitionerId) && !isTrashed(patient))
+  const patients = patientsRepository.listByPractitionerIncludingArchived(practitionerId)
   return NextResponse.json(patients, { status: 200 })
 }
 
@@ -22,9 +16,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = (await req.json()) as FhirPatient
-    const withOwnership = setPatientPractitionerId(body, practitionerId)
-    const parsed = FhirPatientSchema.parse(withOwnership)
-    patientsStore.unshift(parsed)
+    const parsed = patientsRepository.create(practitionerId, body)
     return NextResponse.json(parsed, { status: 201 })
   } catch (err: unknown) {
     if (err instanceof ZodError) {

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { servicesStore } from '@/data/servicesStore'
 import type { Service } from '@/models/service'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
-import { getServiceLifecycleImpact, isTrashed, moveServiceToTrash } from '@/lib/dataLifecycle'
+import { getServiceLifecycleImpact, moveServiceToTrash } from '@/lib/dataLifecycle'
+import * as servicesRepository from '@/lib/repositories/servicesRepository'
 
 type RouteParams = {
   params: Promise<{ serviceId: string }>
@@ -12,7 +12,7 @@ type RouteParams = {
 export async function GET(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { serviceId } = await params
-  const service = servicesStore.find(item => item.id === serviceId && item.practitionerId === practitionerId && !isTrashed(item))
+  const service = servicesRepository.getById(practitionerId, serviceId)
 
   if (!service) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
@@ -24,14 +24,13 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { serviceId } = await params
-  const index = servicesStore.findIndex(item => item.id === serviceId && item.practitionerId === practitionerId && !isTrashed(item))
+  const current = servicesRepository.getById(practitionerId, serviceId)
 
-  if (index === -1) {
+  if (!current) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
   }
 
   const body = (await req.json()) as Partial<Service>
-  const current = servicesStore[index]
   const nextName = typeof body.name === 'string' ? body.name.trim() : current.name
   const nextDurationMinutes = body.durationMinutes === undefined ? current.durationMinutes : Number(body.durationMinutes)
 
@@ -43,14 +42,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'durationMinutes must be greater than 0' }, { status: 400 })
   }
 
-  const duplicate = servicesStore.find(
-    service =>
-      service.id !== serviceId &&
-      service.practitionerId === practitionerId &&
-      !isTrashed(service) &&
-      service.name.trim().toLowerCase() === nextName.toLowerCase() &&
-      service.durationMinutes === nextDurationMinutes,
-  )
+  const duplicate = servicesRepository.findDuplicate(practitionerId, nextName, nextDurationMinutes, {
+    excludeServiceId: serviceId,
+  })
 
   if (duplicate) {
     return NextResponse.json(
@@ -59,24 +53,25 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     )
   }
 
-  const updated: Service = {
-    ...current,
+  const updated = servicesRepository.update(practitionerId, serviceId, {
     ...body,
-    practitionerId,
     name: nextName,
     durationMinutes: nextDurationMinutes,
     description: typeof body.description === 'string' ? body.description.trim() || undefined : current.description,
     active: body.active ?? current.active,
+  })
+
+  if (!updated) {
+    return NextResponse.json({ error: 'Service not found' }, { status: 404 })
   }
 
-  servicesStore[index] = updated
   return NextResponse.json(updated)
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { serviceId } = await params
-  const service = servicesStore.find(item => item.id === serviceId && item.practitionerId === practitionerId && !isTrashed(item))
+  const service = servicesRepository.getById(practitionerId, serviceId)
 
   if (!service) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
