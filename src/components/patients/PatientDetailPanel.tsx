@@ -28,6 +28,7 @@ export function PatientDetailPanel({ patient, bookingsForPatient = [] }: Props) 
 
   const upcoming = bookingsForPatient
     .filter(b => new Date(b.start) >= new Date())
+    .filter(b => b.status === 'confirmed' || b.status === 'pending' || b.status === 'in-progress')
     .sort((a, b) => +new Date(a.start) - +new Date(b.start))
 
   const next = upcoming[0]

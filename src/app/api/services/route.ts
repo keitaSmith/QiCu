@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { servicesStore } from '@/data/servicesStore'
 import type { Service } from '@/models/service'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { isTrashed } from '@/lib/dataLifecycle'
 
 function slugify(value: string) {
   return value
@@ -14,7 +15,7 @@ function slugify(value: string) {
 
 export async function GET(req: NextRequest) {
   const practitionerId = getPractitionerIdFromRequest(req)
-  return NextResponse.json(servicesStore.filter(service => service.practitionerId === practitionerId), { status: 200 })
+  return NextResponse.json(servicesStore.filter(service => service.practitionerId === practitionerId && !isTrashed(service)), { status: 200 })
 }
 
 export async function POST(req: NextRequest) {
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest) {
   const duplicate = servicesStore.find(
     service =>
       service.practitionerId === practitionerId &&
+      !isTrashed(service) &&
       service.name.trim().toLowerCase() === name.toLowerCase() &&
       service.durationMinutes === durationMinutes,
   )

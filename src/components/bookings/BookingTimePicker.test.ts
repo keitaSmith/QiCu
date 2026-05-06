@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { Booking } from '@/models/booking'
+import type { TrashMetadata } from '@/models/lifecycle'
 import { generateSlotsForDay } from './BookingTimePicker'
 
 function buildBooking(overrides: Partial<Booking>): Booking {
@@ -18,6 +19,7 @@ function buildBooking(overrides: Partial<Booking>): Booking {
     status: overrides.status ?? 'confirmed',
     resource: overrides.resource,
     notes: overrides.notes,
+    trashMetadata: overrides.trashMetadata,
   }
 }
 
@@ -72,6 +74,83 @@ test('allows same-time slots when only another practitioner is booked after prac
 
   assert.equal(times.includes('09:00'), true)
   assert.equal(times.includes('11:00'), false)
+})
+
+test('allows slots occupied only by non-blocking booking statuses', () => {
+  const date = new Date(2026, 4, 10)
+  const now = new Date(2026, 4, 10, 8, 0)
+  const nonBlockingStatuses: Array<Booking['status']> = ['cancelled', 'no-show', 'completed']
+
+  for (const status of nonBlockingStatuses) {
+    const slots = generateSlotsForDay(
+      date,
+      [
+        buildBooking({
+          id: `booking-${status}`,
+          status,
+          start: '2026-05-10T09:00:00',
+          end: '2026-05-10T10:00:00',
+        }),
+      ],
+      60,
+      now,
+    )
+    const times = slotTimes(slots)
+
+    assert.equal(times.includes('09:00'), true)
+  }
+})
+
+test('allows slots occupied only by trashed bookings', () => {
+  const date = new Date(2026, 4, 10)
+  const now = new Date(2026, 4, 10, 8, 0)
+  const trashMetadata: TrashMetadata = {
+    deletedAt: '2026-05-01T10:00:00.000Z',
+    restoreUntil: '2026-05-31T10:00:00.000Z',
+    deletedByPractitionerId: 'prac-a',
+    deletionGroupId: 'trash-booking-time-picker',
+    deletionType: 'booking',
+  }
+
+  const slots = generateSlotsForDay(
+    date,
+    [
+      buildBooking({
+        start: '2026-05-10T09:00:00',
+        end: '2026-05-10T10:00:00',
+        trashMetadata,
+      }),
+    ],
+    60,
+    now,
+  )
+  const times = slotTimes(slots)
+
+  assert.equal(times.includes('09:00'), true)
+})
+
+test('confirmed and pending bookings block same-time slots', () => {
+  const date = new Date(2026, 4, 10)
+  const now = new Date(2026, 4, 10, 8, 0)
+
+  for (const status of ['confirmed', 'pending'] as const) {
+    const slots = generateSlotsForDay(
+      date,
+      [
+        buildBooking({
+          id: `booking-${status}`,
+          status,
+          start: '2026-05-10T09:00:00',
+          end: '2026-05-10T10:00:00',
+        }),
+      ],
+      60,
+      now,
+    )
+    const times = slotTimes(slots)
+
+    assert.equal(times.includes('09:00'), false)
+  }
 })
 
 test('excludes past time slots on the current day', () => {

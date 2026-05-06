@@ -6,6 +6,7 @@ import { BOOKINGS } from '@/data/bookings'
 import type { Session } from '@/models/session'
 import { findServiceByIdForPractitioner } from '@/data/servicesStore'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { isTrashed, moveSessionToTrash } from '@/lib/dataLifecycle'
 
 type RouteParams = {
   params: Promise<{ sessionId: string }>
@@ -35,7 +36,7 @@ function ensureBookingCanLink(
   bookingId: string,
   practitionerId: string,
 ) {
-  const booking = BOOKINGS.find(item => item.id === bookingId && item.practitionerId === practitionerId)
+  const booking = BOOKINGS.find(item => item.id === bookingId && item.practitionerId === practitionerId && !isTrashed(item))
 
   if (!booking) return { error: 'Booking not found', status: 404 as const }
   if (booking.patientId !== patientId) {
@@ -54,7 +55,7 @@ function ensureBookingCanLink(
 export async function GET(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { sessionId } = await params
-  const session = sessionsStore.find(s => s.id === sessionId && s.practitionerId === practitionerId)
+  const session = sessionsStore.find(s => s.id === sessionId && s.practitionerId === practitionerId && !isTrashed(s))
 
   if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(session)
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { sessionId } = await params
-  const index = sessionsStore.findIndex(s => s.id === sessionId && s.practitionerId === practitionerId)
+  const index = sessionsStore.findIndex(s => s.id === sessionId && s.practitionerId === practitionerId && !isTrashed(s))
   if (index === -1) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
@@ -112,13 +113,20 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { sessionId } = await params
-  const index = sessionsStore.findIndex(s => s.id === sessionId && s.practitionerId === practitionerId)
-  if (index === -1) {
+  const session = sessionsStore.find(s => s.id === sessionId && s.practitionerId === practitionerId && !isTrashed(s))
+  if (!session) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 
-  sessionsStore.splice(index, 1)
-  unlinkBookingBySessionId(sessionId, practitionerId)
+  const result = moveSessionToTrash(sessionId, practitionerId)
 
-  return NextResponse.json({ ok: true }, { status: 200 })
+  return NextResponse.json(
+    {
+      ok: true,
+      action: 'moved-to-trash',
+      restoreUntil: result.restoreUntil,
+      deletionGroupId: result.deletionGroupId,
+    },
+    { status: 200 },
+  )
 }

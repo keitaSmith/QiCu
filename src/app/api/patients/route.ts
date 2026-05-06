@@ -9,10 +9,11 @@ import {
   patientBelongsToPractitioner,
   setPatientPractitionerId,
 } from '@/lib/practitioners'
+import { isTrashed } from '@/lib/dataLifecycle'
 
 export async function GET(req: NextRequest) {
   const practitionerId = getPractitionerIdFromRequest(req)
-  const patients = patientsStore.filter(patient => patientBelongsToPractitioner(patient, practitionerId))
+  const patients = patientsStore.filter(patient => patientBelongsToPractitioner(patient, practitionerId) && !isTrashed(patient))
   return NextResponse.json(patients, { status: 200 })
 }
 

@@ -19,6 +19,8 @@ import { dateFmt as dt, timeFmt } from '@/lib/dates'
 import { displayName, nameMap } from '@/lib/patients/selectors'
 import type { Session } from '@/models/session'
 import { getErrorMessage } from '@/lib/errors'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { canUsePatientInActiveWorkflow } from '@/lib/patientWorkflow'
 
 function truncateText(value: string, maxLength: number) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value
@@ -31,6 +33,8 @@ export default function SessionsPage() {
   const [dialogPatient, setDialogPatient] = useState<{ id: string; name: string } | null>(null)
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
   const [editingSession, setEditingSession] = useState<Session | null>(null)
+  const [sessionToTrash, setSessionToTrash] = useState<Session | null>(null)
+  const [confirmLoading, setConfirmLoading] = useState(false)
   const { showSnackbar } = useSnackbar()
   const { setRightPanelContent } = useRightPanel()
   const { bookings, loading: bookingsLoading, error: bookingsError } = useBookings()
@@ -47,7 +51,10 @@ export default function SessionsPage() {
   )
 
   const patientOptions = useMemo(
-    () => patients.map(p => ({ id: p.id ?? '', name: displayName(p) })),
+    () =>
+      patients
+        .filter(canUsePatientInActiveWorkflow)
+        .map(p => ({ id: p.id ?? '', name: displayName(p) })),
     [patients],
   )
 
@@ -85,6 +92,15 @@ export default function SessionsPage() {
   }
 
   function handleAddForPatient(patientId: string) {
+    const patient = patients.find(item => item.id === patientId)
+    if (!canUsePatientInActiveWorkflow(patient)) {
+      showSnackbar({
+        variant: 'error',
+        message: 'Archived patients cannot be used for new sessions. Reactivate the patient first.',
+      })
+      return
+    }
+
     const name = names.get(patientId) ?? 'Patient'
     setDialogMode('create')
     setEditingSession(null)
@@ -92,14 +108,17 @@ export default function SessionsPage() {
     setDialogOpen(true)
   }
 
-  async function handleDelete(sessionId: string) {
-    if (!confirm('Delete this session? This cannot be undone.')) return
-
+  async function handleDeleteConfirmed() {
+    if (!sessionToTrash) return
+    setConfirmLoading(true)
     try {
-      await deleteSessionRecord(sessionId)
-      showSnackbar({ variant: 'success', message: 'Session deleted.' })
+      await deleteSessionRecord(sessionToTrash.id)
+      showSnackbar({ variant: 'success', message: 'Session moved to Trash. You can restore it for 30 days.' })
+      setSessionToTrash(null)
     } catch (error: unknown) {
       showSnackbar({ variant: 'error', message: getErrorMessage(error, 'Failed to delete session.') })
+    } finally {
+      setConfirmLoading(false)
     }
   }
 
@@ -191,7 +210,8 @@ export default function SessionsPage() {
                       <SessionActionButtons
                         onEdit={() => handleEdit(s)}
                         onView={() => showSessionDetails(s)}
-                        onDelete={() => handleDelete(s.id)}
+                        onDelete={() => setSessionToTrash(s)}
+                        deleteLabel="Move session to Trash"
                         extras={[{ label: 'Add session', onSelect: () => handleAddForPatient(s.patientId) }]}
                       />
                     </Td>
@@ -243,7 +263,8 @@ export default function SessionsPage() {
                 <SessionActionButtons
                   onEdit={() => handleEdit(s)}
                   onView={() => showSessionDetails(s)}
-                  onDelete={() => handleDelete(s.id)}
+                  onDelete={() => setSessionToTrash(s)}
+                  deleteLabel="Move session to Trash"
                   extras={[{ label: 'Add session', onSelect: () => handleAddForPatient(s.patientId) }]}
                 />
               </div>
@@ -251,6 +272,24 @@ export default function SessionsPage() {
           )
         })}
       </div>
+
+      <ConfirmDialog
+        open={sessionToTrash !== null}
+        onClose={() => setSessionToTrash(null)}
+        onConfirm={handleDeleteConfirmed}
+        loading={confirmLoading}
+        variant="destructive"
+        title="Move session to Trash?"
+        description="This session will be moved to Trash for 30 days. Linked booking references will be handled safely."
+        confirmLabel="Move to Trash"
+      >
+        {sessionToTrash ? (
+          <div className="space-y-1">
+            <p className="font-medium text-ink">{names.get(sessionToTrash.patientId) ?? sessionToTrash.patientId}</p>
+            <p>{sessionToTrash.serviceName ?? 'Session record'}</p>
+          </div>
+        ) : null}
+      </ConfirmDialog>
 
       <SessionDialog
         open={dialogOpen}

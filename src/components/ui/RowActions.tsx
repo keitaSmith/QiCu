@@ -22,6 +22,7 @@ type BaseProps = {
 
   /** Optional delete at bottom of menu */
   onDelete?: () => void
+  deleteLabel?: string
 
   className?: string
 }
@@ -45,6 +46,7 @@ function ActionButtons({
   onView,
   extras = [],
   onDelete,
+  deleteLabel = 'Delete',
   className,
 }: BaseProps) {
   return (
@@ -118,7 +120,7 @@ function ActionButtons({
                     onClick={onDelete}
                     className="w-full px-3 py-2 text-left text-sm text-rose-600 hover:bg-brand-300/10 focus:outline-none"
                   >
-                    Delete
+                    {deleteLabel}
                   </button>
                 </MenuItem>
               )}
@@ -139,12 +141,14 @@ export function PatientsActionButtons({
   onEdit,
   onView,
   onDelete,
+  deleteLabel,
   extras,
   className,
 }: {
   onEdit: () => void
   onView: () => void
   onDelete: () => void
+  deleteLabel?: string
   extras?: ExtraItem[]
   className?: string
 }) {
@@ -160,6 +164,7 @@ export function PatientsActionButtons({
       onView={onView}
       extras={extras ?? defaultExtras}
       onDelete={onDelete}
+      deleteLabel={deleteLabel}
       className={className}
     />
   )
@@ -170,11 +175,13 @@ export function PatientsActionButtons({
 export function BookingActionButtons({
   onView,
   onDelete,
+  deleteLabel,
   className,
   extras,
 }: {
   onView: () => void
   onDelete: () => void
+  deleteLabel?: string
   extras?: ExtraItem[]
   className?: string
 }) {
@@ -183,6 +190,7 @@ export function BookingActionButtons({
       onView={onView}
       extras={extras}
       onDelete={onDelete}
+      deleteLabel={deleteLabel}
       className={className}
     />
   )
@@ -193,12 +201,14 @@ export function SessionActionButtons({
   onEdit,
   onView,
   onDelete,
+  deleteLabel,
   extras,
   className,
 }: {
   onEdit: () => void
   onView: () => void
   onDelete: () => void
+  deleteLabel?: string
   extras?: ExtraItem[]
   className?: string
 }) {
@@ -211,6 +221,7 @@ export function SessionActionButtons({
       onView={onView}
       extras={merged}
       onDelete={onDelete}
+      deleteLabel={deleteLabel}
       className={className}
     />
   )
@@ -219,11 +230,13 @@ export function SessionActionButtons({
 export function ServiceActionButtons({
   onView,
   onDelete,
+  deleteLabel,
   extras,
   className,
 }: {
   onView: () => void
   onDelete: () => void
+  deleteLabel?: string
   extras?: ExtraItem[]
   className?: string
 }) {
@@ -232,6 +245,7 @@ export function ServiceActionButtons({
       onView={onView}
       extras={extras}
       onDelete={onDelete}
+      deleteLabel={deleteLabel}
       className={className}
     />
   )

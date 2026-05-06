@@ -4,9 +4,15 @@ import test from 'node:test'
 import { NextRequest } from 'next/server'
 
 import { BOOKINGS } from '@/data/bookings'
+import { patientsStore } from '@/data/patientsStore'
+import { servicesStore } from '@/data/servicesStore'
+import { isTrashed } from '@/lib/dataLifecycle'
 import { disconnectGoogleIntegration, saveGoogleIntegration } from '@/lib/google/store'
 import { DELETE, PATCH } from './[bookingId]/route'
 import { POST } from './route'
+import { POST as POST_PATIENT_BOOKING } from '../patients/[patientId]/bookings/route'
+import type { Booking } from '@/models/booking'
+import type { TrashMetadata } from '@/models/lifecycle'
 
 const practitionerId = 'prac-tom-cook'
 
@@ -23,6 +29,14 @@ function buildRequest(body: Record<string, unknown>) {
 
 function restoreBookings(snapshot: typeof BOOKINGS) {
   BOOKINGS.splice(0, BOOKINGS.length, ...snapshot)
+}
+
+function restorePatients(snapshot: typeof patientsStore) {
+  patientsStore.splice(0, patientsStore.length, ...snapshot)
+}
+
+function restoreServices(snapshot: typeof servicesStore) {
+  servicesStore.splice(0, servicesStore.length, ...snapshot)
 }
 
 function buildPatchRequest(body: Record<string, unknown>) {
@@ -43,6 +57,26 @@ function buildDeleteRequest() {
       'x-qicu-practitioner-id': practitionerId,
     },
   })
+}
+
+function addOverlappingBooking(status: Booking['status'], overrides: Partial<Booking> = {}) {
+  const booking: Booking = {
+    id: overrides.id ?? `b-test-overlap-${status}`,
+    practitionerId: overrides.practitionerId ?? practitionerId,
+    code: overrides.code ?? `BKG-TEST-${status.toUpperCase()}`,
+    patientId: overrides.patientId ?? 'P-T-1001',
+    serviceId: overrides.serviceId ?? 'tom-acu-45',
+    serviceName: overrides.serviceName ?? 'Acupuncture',
+    serviceDurationMinutes: overrides.serviceDurationMinutes ?? 45,
+    start: overrides.start ?? '2026-05-10T12:30:00.000Z',
+    end: overrides.end ?? '2026-05-10T13:15:00.000Z',
+    status,
+    resource: overrides.resource,
+    notes: overrides.notes,
+    trashMetadata: overrides.trashMetadata,
+  }
+  BOOKINGS.push(booking)
+  return booking
 }
 
 test('creates a valid booking', async () => {
@@ -120,6 +154,89 @@ test('rejects invalid booking durations', async () => {
     assert.equal(payload.error, 'end must be after start')
   } finally {
     restoreBookings(snapshot)
+  }
+})
+
+test('rejects creating a booking for an archived patient', async () => {
+  const bookingSnapshot = BOOKINGS.map(booking => ({ ...booking }))
+  const patientSnapshot = patientsStore.map(patient => ({ ...patient }))
+
+  try {
+    const patient = patientsStore.find(item => item.id === 'P-T-1001')
+    assert.ok(patient)
+    patient.active = false
+
+    const response = await POST(
+      buildRequest({
+        patientId: 'P-T-1001',
+        serviceId: 'tom-acu-45',
+        start: '2026-05-10T12:30:00.000Z',
+        end: '2026-05-10T13:15:00.000Z',
+        skipGoogleWriteback: true,
+      }),
+    )
+
+    assert.equal(response.status, 400)
+    const payload = await response.json()
+    assert.equal(payload.error, 'Archived patients cannot be used for new bookings. Reactivate the patient first.')
+  } finally {
+    restoreBookings(bookingSnapshot)
+    restorePatients(patientSnapshot)
+  }
+})
+
+test('rejects creating a patient-scoped booking for an archived patient', async () => {
+  const bookingSnapshot = BOOKINGS.map(booking => ({ ...booking }))
+  const patientSnapshot = patientsStore.map(patient => ({ ...patient }))
+
+  try {
+    const patient = patientsStore.find(item => item.id === 'P-T-1001')
+    assert.ok(patient)
+    patient.active = false
+
+    const response = await POST_PATIENT_BOOKING(
+      buildRequest({
+        serviceId: 'tom-acu-45',
+        start: '2026-05-10T12:30:00.000Z',
+        end: '2026-05-10T13:15:00.000Z',
+      }),
+      { params: Promise.resolve({ patientId: 'P-T-1001' }) },
+    )
+
+    assert.equal(response.status, 400)
+    const payload = await response.json()
+    assert.equal(payload.error, 'Archived patients cannot be used for new bookings. Reactivate the patient first.')
+  } finally {
+    restoreBookings(bookingSnapshot)
+    restorePatients(patientSnapshot)
+  }
+})
+
+test('rejects creating a booking with a disabled service', async () => {
+  const bookingSnapshot = BOOKINGS.map(booking => ({ ...booking }))
+  const serviceSnapshot = servicesStore.map(service => ({ ...service }))
+
+  try {
+    const service = servicesStore.find(item => item.id === 'tom-acu-45')
+    assert.ok(service)
+    service.active = false
+
+    const response = await POST(
+      buildRequest({
+        patientId: 'P-T-1001',
+        serviceId: 'tom-acu-45',
+        start: '2026-05-10T12:30:00.000Z',
+        end: '2026-05-10T13:15:00.000Z',
+        skipGoogleWriteback: true,
+      }),
+    )
+
+    assert.equal(response.status, 400)
+    const payload = await response.json()
+    assert.equal(payload.error, 'Disabled services cannot be used for new bookings. Enable the service first.')
+  } finally {
+    restoreBookings(bookingSnapshot)
+    restoreServices(serviceSnapshot)
   }
 })
 
@@ -220,6 +337,221 @@ test('updates a booking when the new time does not overlap', async () => {
   }
 })
 
+test('cancelled, no-show, and completed bookings do not block creating the same time', async () => {
+  for (const status of ['cancelled', 'no-show', 'completed'] as const) {
+    const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+
+    try {
+      addOverlappingBooking(status, { id: `b-test-create-${status}` })
+
+      const response = await POST(
+        buildRequest({
+          patientId: 'P-T-1001',
+          serviceId: 'tom-acu-45',
+          start: '2026-05-10T12:30:00.000Z',
+          end: '2026-05-10T13:15:00.000Z',
+          skipGoogleWriteback: true,
+        }),
+      )
+
+      assert.equal(response.status, 201)
+    } finally {
+      restoreBookings(snapshot)
+    }
+  }
+})
+
+test('confirmed and pending bookings still block creating the same time', async () => {
+  for (const status of ['confirmed', 'pending'] as const) {
+    const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+
+    try {
+      addOverlappingBooking(status, { id: `b-test-create-${status}` })
+
+      const response = await POST(
+        buildRequest({
+          patientId: 'P-T-1001',
+          serviceId: 'tom-acu-45',
+          start: '2026-05-10T12:30:00.000Z',
+          end: '2026-05-10T13:15:00.000Z',
+          skipGoogleWriteback: true,
+        }),
+      )
+
+      assert.equal(response.status, 409)
+      const payload = await response.json()
+      assert.equal(payload.error, 'Booking overlaps an existing booking')
+    } finally {
+      restoreBookings(snapshot)
+    }
+  }
+})
+
+test('trashed bookings do not block creating the same time', async () => {
+  const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+  const trashMetadata: TrashMetadata = {
+    deletedAt: '2026-05-01T10:00:00.000Z',
+    restoreUntil: '2026-05-31T10:00:00.000Z',
+    deletedByPractitionerId: practitionerId,
+    deletionGroupId: 'trash-overlap-create',
+    deletionType: 'booking',
+  }
+
+  try {
+    addOverlappingBooking('confirmed', {
+      id: 'b-test-create-trashed',
+      trashMetadata,
+    })
+
+    const response = await POST(
+      buildRequest({
+        patientId: 'P-T-1001',
+        serviceId: 'tom-acu-45',
+        start: '2026-05-10T12:30:00.000Z',
+        end: '2026-05-10T13:15:00.000Z',
+        skipGoogleWriteback: true,
+      }),
+    )
+
+    assert.equal(response.status, 201)
+  } finally {
+    restoreBookings(snapshot)
+  }
+})
+
+test('cancelled booking does not block updating another booking to the same time', async () => {
+  const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+
+  try {
+    addOverlappingBooking('cancelled', { id: 'b-test-update-cancelled' })
+
+    const response = await PATCH(
+      buildPatchRequest({
+        start: '2026-05-10T12:30:00.000Z',
+        end: '2026-05-10T13:15:00.000Z',
+        skipGoogleWriteback: true,
+      }),
+      { params: Promise.resolve({ bookingId: 'b-tom-today-002' }) },
+    )
+
+    assert.equal(response.status, 200)
+    const updated = await response.json()
+    assert.equal(updated.start, '2026-05-10T12:30:00.000Z')
+    assert.equal(updated.end, '2026-05-10T13:15:00.000Z')
+  } finally {
+    restoreBookings(snapshot)
+  }
+})
+
+test('rejects rescheduling a cancelled booking without triggering Google sync', async () => {
+  const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+  const originalFetch = global.fetch
+  let fetchCalls = 0
+
+  saveGoogleIntegration({
+    practitionerId,
+    connected: true,
+    accessToken: 'valid-token',
+    selectedCalendarId: 'calendar-primary',
+  })
+
+  global.fetch = (async () => {
+    fetchCalls += 1
+    return new Response('{}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }) as typeof fetch
+
+  try {
+    const booking = BOOKINGS.find(item => item.id === 'b-tom-today-002')
+    assert.ok(booking)
+    booking.status = 'cancelled'
+    booking.externalEventId = 'event-123'
+    booking.externalCalendarId = 'calendar-primary'
+    const originalStart = booking.start
+    const originalEnd = booking.end
+
+    const response = await PATCH(
+      buildPatchRequest({
+        start: '2026-05-10T12:30:00.000Z',
+        end: '2026-05-10T13:00:00.000Z',
+      }),
+      { params: Promise.resolve({ bookingId: 'b-tom-today-002' }) },
+    )
+
+    assert.equal(response.status, 400)
+    const payload = await response.json()
+    assert.equal(
+      payload.error,
+      'Cancelled bookings cannot be rescheduled. Create a new booking or change the status first.',
+    )
+    assert.equal(booking.start, originalStart)
+    assert.equal(booking.end, originalEnd)
+    assert.equal(booking.status, 'cancelled')
+    assert.equal(fetchCalls, 0)
+  } finally {
+    global.fetch = originalFetch
+    disconnectGoogleIntegration(practitionerId)
+    restoreBookings(snapshot)
+  }
+})
+
+test('allows safe non-time updates on a cancelled booking', async () => {
+  const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+
+  try {
+    const booking = BOOKINGS.find(item => item.id === 'b-tom-today-002')
+    assert.ok(booking)
+    booking.status = 'cancelled'
+
+    const response = await PATCH(
+      buildPatchRequest({
+        notes: 'Updated cancellation note',
+        skipGoogleWriteback: true,
+      }),
+      { params: Promise.resolve({ bookingId: 'b-tom-today-002' }) },
+    )
+
+    assert.equal(response.status, 200)
+    const updated = await response.json()
+    assert.equal(updated.status, 'cancelled')
+    assert.equal(updated.notes, 'Updated cancellation note')
+    assert.equal(updated.start, booking.start)
+    assert.equal(updated.end, booking.end)
+  } finally {
+    restoreBookings(snapshot)
+  }
+})
+
+test('allows rescheduling a cancelled booking when it is explicitly reactivated', async () => {
+  const snapshot = BOOKINGS.map(booking => ({ ...booking }))
+
+  try {
+    const booking = BOOKINGS.find(item => item.id === 'b-tom-today-002')
+    assert.ok(booking)
+    booking.status = 'cancelled'
+
+    const response = await PATCH(
+      buildPatchRequest({
+        start: '2026-05-10T12:30:00.000Z',
+        end: '2026-05-10T13:00:00.000Z',
+        status: 'confirmed',
+        skipGoogleWriteback: true,
+      }),
+      { params: Promise.resolve({ bookingId: 'b-tom-today-002' }) },
+    )
+
+    assert.equal(response.status, 200)
+    const updated = await response.json()
+    assert.equal(updated.status, 'confirmed')
+    assert.equal(updated.start, '2026-05-10T12:30:00.000Z')
+    assert.equal(updated.end, '2026-05-10T13:00:00.000Z')
+  } finally {
+    restoreBookings(snapshot)
+  }
+})
+
 test('still updates a booking when Google Calendar update sync fails', async () => {
   const snapshot = BOOKINGS.map(booking => ({ ...booking }))
   const originalFetch = global.fetch
@@ -304,7 +636,9 @@ test('still deletes a booking when Google Calendar delete sync fails', async () 
     )
 
     assert.equal(response.status, 200)
-    assert.equal(BOOKINGS.some(item => item.id === 'b-tom-today-002'), false)
+    const trashedBooking = BOOKINGS.find(item => item.id === 'b-tom-today-002')
+    assert.ok(trashedBooking)
+    assert.equal(isTrashed(trashedBooking), true)
     assert.equal(loggedErrors.length, 1)
     assert.equal(loggedErrors[0][0], 'Google Calendar booking delete sync failed')
   } finally {

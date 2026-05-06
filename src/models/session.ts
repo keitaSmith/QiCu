@@ -1,3 +1,5 @@
+import type { LifecycleFields } from '@/models/lifecycle'
+
 export type SessionId = string
 
 export type BasicVitals = {
@@ -14,7 +16,7 @@ export type TcmFindings = {
   pulseQuality?: string
 }
 
-export type Session = {
+export type Session = LifecycleFields & {
   id: SessionId
   practitionerId: string
   patientId: string

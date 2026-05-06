@@ -1,5 +1,6 @@
 // models/fhir/patient.ts
 import type { Attachment, CodeableConcept, Identifier, Meta, Period, Reference } from './common'
+import type { LifecycleFields } from '@/models/lifecycle'
 
 export type HumanName = {
   use?: 'usual'|'official'|'temp'|'nickname'|'anonymous'|'old'|'maiden'
@@ -53,7 +54,7 @@ export type PatientLink = {
 }
 
 /** FHIR R4/R4B Patient (comprehensive but still practical) */
-export type FhirPatient = {
+export type FhirPatient = LifecycleFields & {
   resourceType: 'Patient'
   id: string
   meta?: Meta

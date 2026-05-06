@@ -19,6 +19,7 @@ import { useBookings } from '@/hooks/useBookings'
 import { useIsDesktop } from '@/lib/useIsDesktop'
 import { usePatients } from '@/hooks/usePatients'
 import type { Booking } from '@/models/booking'
+import { canUsePatientInActiveWorkflow } from '@/lib/patientWorkflow'
 
 const EMPTY_BOOKING_LIST: Booking[] = []
 
@@ -39,7 +40,13 @@ export default function CalendarPage() {
   }, [setRightPanelContent])
 
   const patientNames = useMemo(() => nameMap(patients), [patients])
-  const patientOptions = useMemo(() => patients.map(patient => ({ id: patient.id ?? '', name: displayName(patient) })), [patients])
+  const patientOptions = useMemo(
+    () =>
+      patients
+        .filter(canUsePatientInActiveWorkflow)
+        .map(patient => ({ id: patient.id ?? '', name: displayName(patient) })),
+    [patients],
+  )
   const calendarEvents = useMemo(() => toCalendarEvents(bookings, patientNames), [bookings, patientNames])
   const eventsByDate = useMemo(() => groupEventsByDate(calendarEvents), [calendarEvents])
 

@@ -6,6 +6,7 @@ import { applyBookingStatus } from '@/lib/bookingStatus'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
 import { syncGoogleOnBookingDelete, syncGoogleOnBookingUpdate } from '@/lib/google/sync'
 import { hasBookingOverlap } from '@/lib/bookingValidation'
+import { isTrashed, moveBookingToTrash } from '@/lib/dataLifecycle'
 
 type UpdateBookingBody = {
   start?: string
@@ -24,7 +25,7 @@ export async function PATCH(
   const practitionerId = getPractitionerIdFromRequest(req)
   const { bookingId } = await context.params
 
-  const booking = BOOKINGS.find(b => b.id === bookingId && b.practitionerId === practitionerId)
+  const booking = BOOKINGS.find(b => b.id === bookingId && b.practitionerId === practitionerId && !isTrashed(b))
 
   if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
@@ -50,7 +51,21 @@ export async function PATCH(
     return NextResponse.json({ error: 'end must be after start' }, { status: 400 })
   }
 
-  const practitionerBookings = BOOKINGS.filter(candidate => candidate.practitionerId === practitionerId)
+  const changesStart = body.start !== undefined && nextStart.toISOString() !== booking.start
+  const changesEnd = body.end !== undefined && nextEnd.toISOString() !== booking.end
+  const changesTime = changesStart || changesEnd
+  const reactivatesCancelledBooking = body.status !== undefined && body.status !== 'cancelled'
+
+  if (booking.status === 'cancelled' && changesTime && !reactivatesCancelledBooking) {
+    return NextResponse.json(
+      {
+        error: 'Cancelled bookings cannot be rescheduled. Create a new booking or change the status first.',
+      },
+      { status: 400 },
+    )
+  }
+
+  const practitionerBookings = BOOKINGS.filter(candidate => candidate.practitionerId === practitionerId && !isTrashed(candidate))
 
   if (
     hasBookingOverlap(
@@ -113,15 +128,23 @@ export async function DELETE(
   const practitionerId = getPractitionerIdFromRequest(req)
   const { bookingId } = await context.params
 
-  const index = BOOKINGS.findIndex(b => b.id === bookingId && b.practitionerId === practitionerId)
+  const booking = BOOKINGS.find(b => b.id === bookingId && b.practitionerId === practitionerId && !isTrashed(b))
 
-  if (index === -1) {
+  if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  await syncGoogleOnBookingDelete(BOOKINGS[index], req)
+  await syncGoogleOnBookingDelete(booking, req)
 
-  BOOKINGS.splice(index, 1)
+  const result = moveBookingToTrash(bookingId, practitionerId)
 
-  return NextResponse.json({ ok: true }, { status: 200 })
+  return NextResponse.json(
+    {
+      ok: true,
+      action: 'moved-to-trash',
+      restoreUntil: result.restoreUntil,
+      deletionGroupId: result.deletionGroupId,
+    },
+    { status: 200 },
+  )
 }

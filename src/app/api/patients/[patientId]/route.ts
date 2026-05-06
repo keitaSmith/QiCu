@@ -9,6 +9,7 @@ import {
   patientBelongsToPractitioner,
   setPatientPractitionerId,
 } from '@/lib/practitioners'
+import { isTrashed, movePatientGraphToTrash } from '@/lib/dataLifecycle'
 
 type RouteParams = {
   params: Promise<{ patientId: string }>
@@ -18,7 +19,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { patientId } = await params
   const index = patientsStore.findIndex(
-    patient => patient.id === patientId && patientBelongsToPractitioner(patient, practitionerId),
+    patient => patient.id === patientId && patientBelongsToPractitioner(patient, practitionerId) && !isTrashed(patient),
   )
 
   if (index === -1) {
@@ -26,15 +27,16 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const json = (await req.json()) as Partial<FhirPatient>
+    const safeJson = { ...((await req.json()) as Partial<FhirPatient>) }
+    delete safeJson.trashMetadata
     const merged: FhirPatient = setPatientPractitionerId(
       {
         ...patientsStore[index],
-        ...json,
+        ...safeJson,
         id: patientId,
         meta: {
           ...(patientsStore[index].meta ?? {}),
-          ...(json?.meta ?? {}),
+          ...(safeJson?.meta ?? {}),
           lastUpdated: new Date().toISOString(),
         },
       },
@@ -65,13 +67,22 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { patientId } = await params
   const index = patientsStore.findIndex(
-    patient => patient.id === patientId && patientBelongsToPractitioner(patient, practitionerId),
+    patient => patient.id === patientId && patientBelongsToPractitioner(patient, practitionerId) && !isTrashed(patient),
   )
 
   if (index === -1) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }
 
-  const [removed] = patientsStore.splice(index, 1)
-  return NextResponse.json(removed, { status: 200 })
+  const result = movePatientGraphToTrash(patientId, practitionerId)
+  return NextResponse.json(
+    {
+      ok: true,
+      action: 'moved-to-trash',
+      restoreUntil: result.restoreUntil,
+      deletionGroupId: result.deletionGroupId,
+      impact: result.impact,
+    },
+    { status: 200 },
+  )
 }

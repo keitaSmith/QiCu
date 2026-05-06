@@ -15,10 +15,19 @@ import { cn } from '@/lib/cn'
 import { useTasks, type TaskKind } from '@/hooks/useTasks'
 import { useBookings } from '@/hooks/useBookings'
 import { TaskSkeleton } from '@/components/tasks/TaskSkeleton'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { useState } from 'react'
 
 type Props = {
   patientNameForId: (patientId: string) => string
   onCreateSession: (booking: Booking) => void
+}
+
+type PendingStatusChange = {
+  booking: Booking
+  status: Booking['status']
+  title: string
+  description: string
 }
 
 function taskMeta(kind: TaskKind) {
@@ -58,6 +67,8 @@ function taskMeta(kind: TaskKind) {
 
 export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
   const { bookings, loading, error, refresh, updateBookingStatus } = useBookings()
+  const [pendingStatusChange, setPendingStatusChange] = useState<PendingStatusChange | null>(null)
+  const [confirmLoading, setConfirmLoading] = useState(false)
 
   const tasks = useTasks(bookings)
 
@@ -72,7 +83,19 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
     if (updated) onCreateSession(updated)
   }
 
+  async function handleConfirmStatusChange() {
+    if (!pendingStatusChange) return
+    setConfirmLoading(true)
+    try {
+      await setStatus(pendingStatusChange.booking, pendingStatusChange.status)
+      setPendingStatusChange(null)
+    } finally {
+      setConfirmLoading(false)
+    }
+  }
+
   return (
+    <>
     <Menu as="div" className="relative">
       <MenuButton
         onClick={() => {
@@ -179,9 +202,14 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
                       <MenuItem>
                         {({ focus }) => (
                           <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm('Mark this booking as completed?')) setStatus(b, 'completed')
+                          type="button"
+                          onClick={() => {
+                              setPendingStatusChange({
+                                booking: b,
+                                status: 'completed',
+                                title: 'Mark booking as completed?',
+                                description: `This will update booking ${b.code} to completed.`,
+                              })
                             }}
                             className={cn(
                               'inline-flex items-center gap-1 rounded-lg bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-600',
@@ -196,9 +224,14 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
                       <MenuItem>
                         {({ focus }) => (
                           <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm('Mark this booking as no-show?')) setStatus(b, 'no-show')
+                          type="button"
+                          onClick={() => {
+                              setPendingStatusChange({
+                                booking: b,
+                                status: 'no-show',
+                                title: 'Mark booking as no-show?',
+                                description: `This will update booking ${b.code} to no-show.`,
+                              })
                             }}
                             className={cn(
                               'inline-flex items-center gap-1 rounded-lg border border-brand-300/50 bg-surface px-3 py-1.5 text-xs font-semibold text-ink hover:bg-brand-300/10',
@@ -213,9 +246,14 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
                       <MenuItem>
                         {({ focus }) => (
                           <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm('Mark this booking as cancelled?')) setStatus(b, 'cancelled')
+                          type="button"
+                          onClick={() => {
+                              setPendingStatusChange({
+                                booking: b,
+                                status: 'cancelled',
+                                title: 'Cancel booking?',
+                                description: `This will update booking ${b.code} to cancelled.`,
+                              })
                             }}
                             className={cn(
                               'inline-flex items-center gap-1 rounded-lg border border-brand-300/50 bg-surface px-3 py-1.5 text-xs font-semibold text-ink hover:bg-brand-300/10',
@@ -272,5 +310,23 @@ export function TasksMenu({ patientNameForId, onCreateSession }: Props) {
         </div>
       </MenuItems>
     </Menu>
+    <ConfirmDialog
+      open={pendingStatusChange !== null}
+      onClose={() => setPendingStatusChange(null)}
+      onConfirm={handleConfirmStatusChange}
+      loading={confirmLoading}
+      variant={pendingStatusChange?.status === 'cancelled' ? 'destructive' : 'default'}
+      title={pendingStatusChange?.title ?? 'Confirm booking update'}
+      description={pendingStatusChange?.description ?? ''}
+      confirmLabel="Confirm"
+    >
+      {pendingStatusChange ? (
+        <div className="space-y-1">
+          <p className="font-medium text-ink">{patientNameForId(pendingStatusChange.booking.patientId)}</p>
+          <p>{pendingStatusChange.booking.serviceName}</p>
+        </div>
+      ) : null}
+    </ConfirmDialog>
+    </>
   )
 }

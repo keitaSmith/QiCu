@@ -6,6 +6,8 @@ import { applyBookingStatus } from '@/lib/bookingStatus'
 import { findServiceByIdForPractitioner } from '@/data/servicesStore'
 import { getPractitionerIdFromRequest, patientBelongsToPractitioner } from '@/lib/practitioners'
 import { patientsStore } from '@/data/patientsStore'
+import { isTrashed } from '@/lib/dataLifecycle'
+import { canUsePatientInActiveWorkflow } from '@/lib/patientWorkflow'
 
 type RouteParams = {
   params: Promise<{ patientId: string }>
@@ -15,7 +17,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { patientId } = await params
   const sessions = sessionsStore.filter(
-    session => session.patientId === patientId && session.practitionerId === practitionerId,
+    session => session.patientId === patientId && session.practitionerId === practitionerId && !isTrashed(session),
   )
   return NextResponse.json(sessions)
 }
@@ -23,9 +25,16 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { patientId } = await params
-  const patient = patientsStore.find(item => item.id === patientId)
+  const patient = patientsStore.find(item => item.id === patientId && !isTrashed(item))
   if (!patient || !patientBelongsToPractitioner(patient, practitionerId)) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
+  }
+
+  if (!canUsePatientInActiveWorkflow(patient)) {
+    return NextResponse.json(
+      { error: 'Archived patients cannot be used for new sessions. Reactivate the patient first.' },
+      { status: 400 },
+    )
   }
 
   const body = await req.json()
@@ -39,7 +48,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 
   if (bookingId) {
-    const booking = BOOKINGS.find(b => b.id === bookingId && b.practitionerId === practitionerId)
+    const booking = BOOKINGS.find(b => b.id === bookingId && b.practitionerId === practitionerId && !isTrashed(b))
     if (!booking) {
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
     }

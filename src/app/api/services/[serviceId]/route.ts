@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { servicesStore } from '@/data/servicesStore'
 import type { Service } from '@/models/service'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { getServiceLifecycleImpact, isTrashed, moveServiceToTrash } from '@/lib/dataLifecycle'
 
 type RouteParams = {
   params: Promise<{ serviceId: string }>
@@ -11,7 +12,7 @@ type RouteParams = {
 export async function GET(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { serviceId } = await params
-  const service = servicesStore.find(item => item.id === serviceId && item.practitionerId === practitionerId)
+  const service = servicesStore.find(item => item.id === serviceId && item.practitionerId === practitionerId && !isTrashed(item))
 
   if (!service) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { serviceId } = await params
-  const index = servicesStore.findIndex(item => item.id === serviceId && item.practitionerId === practitionerId)
+  const index = servicesStore.findIndex(item => item.id === serviceId && item.practitionerId === practitionerId && !isTrashed(item))
 
   if (index === -1) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
@@ -46,6 +47,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     service =>
       service.id !== serviceId &&
       service.practitionerId === practitionerId &&
+      !isTrashed(service) &&
       service.name.trim().toLowerCase() === nextName.toLowerCase() &&
       service.durationMinutes === nextDurationMinutes,
   )
@@ -74,12 +76,22 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { serviceId } = await params
-  const index = servicesStore.findIndex(item => item.id === serviceId && item.practitionerId === practitionerId)
+  const service = servicesStore.find(item => item.id === serviceId && item.practitionerId === practitionerId && !isTrashed(item))
 
-  if (index === -1) {
+  if (!service) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
   }
 
-  servicesStore.splice(index, 1)
-  return NextResponse.json({ ok: true }, { status: 200 })
+  const impact = getServiceLifecycleImpact(serviceId, practitionerId)
+  const result = moveServiceToTrash(serviceId, practitionerId)
+  return NextResponse.json(
+    {
+      ok: true,
+      action: 'moved-to-trash',
+      restoreUntil: result.restoreUntil,
+      deletionGroupId: result.deletionGroupId,
+      impact,
+    },
+    { status: 200 },
+  )
 }

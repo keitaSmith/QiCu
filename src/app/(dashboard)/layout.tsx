@@ -20,11 +20,7 @@ import {
   Bars3Icon,
   BellIcon,
   CalendarIcon,
-  ChartPieIcon,
-  Cog6ToothIcon,
-  DocumentDuplicateIcon,
-  FolderIcon,
-  UsersIcon,
+  HomeIcon,
   UserGroupIcon,
   XMarkIcon,
   CalendarDaysIcon,
@@ -32,6 +28,7 @@ import {
   WrenchScrewdriverIcon,
   SparklesIcon,
   UserCircleIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline'
 import { ChevronDownIcon, MagnifyingGlassIcon } from '@heroicons/react/20/solid'
 
@@ -47,25 +44,25 @@ import { nameMap } from '@/lib/patients/selectors'
 import { emitBookingsChanged } from '@/lib/booking-events'
 
 const navigation = [
+  { name: 'Home', href: '/dashboard/home', icon: HomeIcon },
   { name: 'Patients', href: '/dashboard/patients', icon: UserGroupIcon },
   { name: 'Bookings', href: '/dashboard/bookings', icon: CalendarDaysIcon },
   { name: 'Sessions', href: '/dashboard/sessions', icon: ClipboardDocumentCheckIcon },
   { name: 'Services', href: '/dashboard/services', icon: WrenchScrewdriverIcon },
-  { name: 'Team', href: '/dashboard/team', icon: UsersIcon },
-  { name: 'Projects', href: '/dashboard/projects', icon: FolderIcon },
   { name: 'Calendar', href: '/dashboard/calendar', icon: CalendarIcon },
-  { name: 'Documents', href: '/dashboard/documents', icon: DocumentDuplicateIcon },
-  { name: 'Reports', href: '/dashboard/reports', icon: ChartPieIcon },
-]
-
-const teams = [
-  { id: 1, name: 'Heroicons', href: '#', initial: 'H' },
-  { id: 2, name: 'Tailwind Labs', href: '#', initial: 'T' },
-  { id: 3, name: 'Workcation', href: '#', initial: 'W' },
+  { name: 'Trash', href: '/dashboard/trash', icon: TrashIcon },
 ]
 
 function classNames(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(' ')
+}
+
+function isNavItemActive(pathname: string, href: string) {
+  if (href === '/dashboard/home') {
+    return pathname === '/dashboard' || pathname === '/dashboard/home'
+  }
+
+  return pathname === href
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -128,7 +125,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
             <div className="relative flex grow flex-col gap-y-5 overflow-y-auto bg-surface px-6 pb-4">
               <div className="flex h-16 shrink-0 items-center">
                 <img
-                  alt="Your Company"
+                  alt="QiCu"
                   src="https://tailwindcss.com/plus-assets/img/logos/mark.svg?color=086e89&shade=600"
                   className="h-8 w-auto"
                 />
@@ -139,7 +136,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                   <li>
                     <ul role="list" className="-mx-2 space-y-1">
                       {navigation.map((item) => {
-                        const active = pathname === item.href
+                        const active = isNavItemActive(pathname, item.href)
                         return (
                           <li key={item.name}>
                             <Link
@@ -167,34 +164,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                     </ul>
                   </li>
 
-                  <li>
-                    <div className="text-xs/6 font-semibold text-ink/60">Your teams</div>
-                    <ul role="list" className="-mx-2 mt-2 space-y-1">
-                      {teams.map((team) => (
-                        <li key={team.name}>
-                          <a
-                            href={team.href}
-                            className="group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold text-ink hover:bg-brand-300/10 hover:text-brand-600"
-                          >
-                            <span className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-brand-300/50 bg-surface text-[0.625rem] font-medium text-ink/50 group-hover:border-brand-600/60 group-hover:text-brand-600">
-                              {team.initial}
-                            </span>
-                            <span className="truncate">{team.name}</span>
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-
-                  <li className="mt-auto">
-                    <a
-                      href="#"
-                      className="group -mx-2 flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold text-ink hover:bg-brand-300/10 hover:text-brand-600"
-                    >
-                      <Cog6ToothIcon aria-hidden="true" className="size-6 shrink-0 text-ink/50 group-hover:text-brand-600" />
-                      Settings
-                    </a>
-                  </li>
                 </ul>
               </nav>
             </div>
@@ -207,7 +176,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         <div className="flex grow flex-col gap-y-5 overflow-y-auto border-r border-brand-300/30 bg-surface px-6 pb-4">
           <div className="flex h-16 shrink-0 items-center">
             <img
-              alt="Your Company"
+              alt="QiCu"
               src="https://tailwindcss.com/plus-assets/img/logos/mark.svg?color=086e89&shade=600"
               className="h-8 w-auto"
             />
@@ -219,7 +188,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
               <li>
                 <ul role="list" className="-mx-2 space-y-1">
                   {navigation.map((item) => {
-                    const active = pathname === item.href
+                    const active = isNavItemActive(pathname, item.href)
                     return (
                       <li key={item.name}>
                         <Link
@@ -246,34 +215,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                 </ul>
               </li>
 
-              <li>
-                <div className="text-xs/6 font-semibold text-ink/60">Your teams</div>
-                <ul role="list" className="-mx-2 mt-2 space-y-1">
-                  {teams.map((team) => (
-                    <li key={team.name}>
-                      <a
-                        href={team.href}
-                        className="group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold text-ink hover:bg-brand-300/10 hover:text-brand-600"
-                      >
-                        <span className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-brand-300/50 bg-surface text-[0.625rem] font-medium text-ink/50 group-hover:border-brand-600/60 group-hover:text-brand-600">
-                          {team.initial}
-                        </span>
-                        <span className="truncate">{team.name}</span>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </li>
-
-              <li className="mt-auto">
-                <a
-                  href="#"
-                  className="group -mx-2 flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold text-ink hover:bg-brand-300/10 hover:text-brand-600"
-                >
-                  <Cog6ToothIcon aria-hidden="true" className="size-6 shrink-0 text-ink/50 group-hover:text-brand-600" />
-                  Settings
-                </a>
-              </li>
             </ul>
           </nav>
         </div>

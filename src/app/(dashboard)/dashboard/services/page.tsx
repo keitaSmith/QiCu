@@ -14,19 +14,30 @@ import { TableSkeleton } from '@/components/ui/TableSkeleton'
 import { CardListSkeleton } from '@/components/ui/CardListSkeleton'
 import { useIsDesktop } from '@/lib/useIsDesktop'
 import { useServices } from '@/hooks/useServices'
+import { useBookings } from '@/hooks/useBookings'
+import { useSessions } from '@/hooks/useSessions'
 import type { Service } from '@/models/service'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+
+type ServiceConfirmAction =
+  | { kind: 'toggle'; service: Service }
+  | { kind: 'delete'; service: Service }
 
 export default function ServicesPage() {
   const router = useRouter()
   const isDesktop = useIsDesktop()
   const { setRightPanelContent } = useRightPanel()
   const { services, loading, error, createServiceRecord, patchServiceById, deleteServiceById } = useServices()
+  const { bookings } = useBookings()
+  const { sessions } = useSessions()
 
   const [q, setQ] = useState('')
   const [showInactive, setShowInactive] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
   const [editingService, setEditingService] = useState<Service | null>(null)
+  const [confirmAction, setConfirmAction] = useState<ServiceConfirmAction | null>(null)
+  const [confirmLoading, setConfirmLoading] = useState(false)
 
   useEffect(() => {
     setRightPanelContent(null)
@@ -41,6 +52,20 @@ export default function ServicesPage() {
         .some(value => value.toLowerCase().includes(needle))
     })
   }, [services, q, showInactive])
+
+  const confirmServiceUsage = useMemo(() => {
+    if (!confirmAction) return { bookings: 0, sessions: 0, used: false }
+
+    const serviceId = confirmAction.service.id
+    const bookingCount = bookings.filter(booking => booking.serviceId === serviceId).length
+    const sessionCount = sessions.filter(session => session.serviceId === serviceId).length
+
+    return {
+      bookings: bookingCount,
+      sessions: sessionCount,
+      used: bookingCount > 0 || sessionCount > 0,
+    }
+  }, [bookings, confirmAction, sessions])
 
   function handleViewService(service: Service) {
     if (isDesktop) {
@@ -60,10 +85,20 @@ export default function ServicesPage() {
     await patchServiceById(service.id, { active: !service.active })
   }
 
-  async function handleDelete(service: Service) {
-    if (!window.confirm(`Delete ${service.name} ${service.durationMinutes} min?`)) return
-    await deleteServiceById(service.id)
-    if (isDesktop) setRightPanelContent(null)
+  async function handleConfirmServiceAction() {
+    if (!confirmAction) return
+    setConfirmLoading(true)
+    try {
+      if (confirmAction.kind === 'toggle') {
+        await handleToggleActive(confirmAction.service)
+      } else {
+        await deleteServiceById(confirmAction.service.id)
+        if (isDesktop) setRightPanelContent(null)
+      }
+      setConfirmAction(null)
+    } finally {
+      setConfirmLoading(false)
+    }
   }
 
   return (
@@ -129,12 +164,13 @@ export default function ServicesPage() {
                   <Td className="text-right">
                     <ServiceActionButtons
                       onView={() => handleViewService(service)}
-                      onDelete={() => handleDelete(service)}
+                      onDelete={() => setConfirmAction({ kind: 'delete', service })}
+                      deleteLabel="Move service to Trash"
                       extras={[
                         { label: 'Edit service', onSelect: () => handleEdit(service) },
                         {
                           label: service.active ? 'Disable service' : 'Enable service',
-                          onSelect: () => handleToggleActive(service),
+                          onSelect: () => setConfirmAction({ kind: 'toggle', service }),
                         },
                       ]}
                     />
@@ -178,12 +214,13 @@ export default function ServicesPage() {
             <div className="mt-4 flex justify-end">
               <ServiceActionButtons
                 onView={() => handleViewService(service)}
-                onDelete={() => handleDelete(service)}
+                onDelete={() => setConfirmAction({ kind: 'delete', service })}
+                deleteLabel="Move service to Trash"
                 extras={[
                   { label: 'Edit service', onSelect: () => handleEdit(service) },
                   {
                     label: service.active ? 'Disable service' : 'Enable service',
-                    onSelect: () => handleToggleActive(service),
+                    onSelect: () => setConfirmAction({ kind: 'toggle', service }),
                   },
                 ]}
               />
@@ -191,6 +228,55 @@ export default function ServicesPage() {
           </article>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={confirmAction !== null}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={handleConfirmServiceAction}
+        loading={confirmLoading}
+        variant={confirmAction?.kind === 'delete' ? 'destructive' : 'default'}
+        title={
+          confirmAction?.kind === 'delete'
+            ? 'Delete service?'
+            : confirmAction?.service.active
+              ? 'Disable service?'
+              : 'Enable service?'
+        }
+        description={
+          confirmAction?.kind === 'delete'
+            ? confirmServiceUsage.used
+              ? 'This service has been used in past bookings or sessions. Disabling is usually safer because it stops the service from being used in new bookings while keeping the service definition available for historical context.\n\nDeleting will move this service to Trash. Past bookings and sessions will keep their recorded service details where available, but the original service definition will no longer be active.'
+              : 'Deleting will move this service to Trash for 30 days. This is best for mistakes, duplicates, or services that should not exist.'
+            : confirmAction?.service.active
+              ? 'This service will no longer be available for new bookings, but past bookings and sessions will keep their service history.'
+              : 'This service will become available for new bookings again.'
+        }
+        confirmLabel={
+          confirmAction?.kind === 'delete'
+            ? 'Move to Trash'
+            : confirmAction?.service.active
+              ? 'Disable service'
+              : 'Enable service'
+        }
+      >
+        {confirmAction ? (
+          <div>
+            <p className="font-medium text-ink">{confirmAction.service.name}</p>
+            <p>{confirmAction.service.durationMinutes} min</p>
+            {confirmAction.kind === 'delete' ? (
+              <div className="mt-2 space-y-1 text-ink/60">
+                {confirmServiceUsage.used ? (
+                  <p>
+                    Used in {confirmServiceUsage.bookings} {confirmServiceUsage.bookings === 1 ? 'booking' : 'bookings'} and{' '}
+                    {confirmServiceUsage.sessions} {confirmServiceUsage.sessions === 1 ? 'session' : 'sessions'}.
+                  </p>
+                ) : null}
+                <p>Recommendation: disable the service if you only want to stop using it for new bookings.</p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </ConfirmDialog>
 
       <ServiceDialog
         open={dialogOpen}

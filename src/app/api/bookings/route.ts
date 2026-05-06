@@ -10,6 +10,8 @@ import {
 import { patientsStore } from '@/data/patientsStore'
 import { syncGoogleOnBookingCreate } from '@/lib/google/sync'
 import { hasBookingOverlap } from '@/lib/bookingValidation'
+import { isTrashed } from '@/lib/dataLifecycle'
+import { canUsePatientInActiveWorkflow } from '@/lib/patientWorkflow'
 
 type CreateBookingBody = {
   patientId?: string
@@ -33,7 +35,7 @@ function generateBookingCode(practitionerId: string) {
 
 export async function GET(req: NextRequest) {
   const practitionerId = getPractitionerIdFromRequest(req)
-  return NextResponse.json(BOOKINGS.filter(booking => booking.practitionerId === practitionerId), { status: 200 })
+  return NextResponse.json(BOOKINGS.filter(booking => booking.practitionerId === practitionerId && !isTrashed(booking)), { status: 200 })
 }
 
 export async function POST(req: NextRequest) {
@@ -45,9 +47,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'patientId is required' }, { status: 400 })
   }
 
-  const patient = patientsStore.find(item => item.id === patientId)
+  const patient = patientsStore.find(item => item.id === patientId && !isTrashed(item))
   if (!patient || getPatientPractitionerId(patient) !== practitionerId) {
     return NextResponse.json({ error: 'Unknown patientId' }, { status: 400 })
+  }
+
+  if (!canUsePatientInActiveWorkflow(patient)) {
+    return NextResponse.json(
+      { error: 'Archived patients cannot be used for new bookings. Reactivate the patient first.' },
+      { status: 400 },
+    )
   }
 
   const serviceId = body.serviceId?.trim()
@@ -58,6 +67,13 @@ export async function POST(req: NextRequest) {
   const service = findServiceByIdForPractitioner(serviceId, practitionerId)
   if (!service) {
     return NextResponse.json({ error: 'Unknown serviceId' }, { status: 400 })
+  }
+
+  if (!service.active) {
+    return NextResponse.json(
+      { error: 'Disabled services cannot be used for new bookings. Enable the service first.' },
+      { status: 400 },
+    )
   }
 
   const start = body.start ? new Date(body.start) : null
@@ -74,7 +90,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'end must be after start' }, { status: 400 })
   }
 
-  const practitionerBookings = BOOKINGS.filter(booking => booking.practitionerId === practitionerId)
+  const practitionerBookings = BOOKINGS.filter(booking => booking.practitionerId === practitionerId && !isTrashed(booking))
 
   if (hasBookingOverlap(practitionerBookings, start.toISOString(), end.toISOString())) {
     return NextResponse.json({ error: 'Booking overlaps an existing booking' }, { status: 409 })

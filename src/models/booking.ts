@@ -1,5 +1,7 @@
 // /models/booking.ts
 
+import type { LifecycleFields } from '@/models/lifecycle'
+
 export type BookingStatus =
   | 'confirmed'
   | 'pending'
@@ -8,7 +10,7 @@ export type BookingStatus =
   | 'completed'
   | 'no-show'
 
-export type Booking = {
+export type Booking = LifecycleFields & {
   /** Internal PK (UUID/ULID) */
   id: string
 

@@ -1,4 +1,6 @@
-export type Service = {
+import type { LifecycleFields } from '@/models/lifecycle'
+
+export type Service = LifecycleFields & {
   id: string
   practitionerId: string
   name: string

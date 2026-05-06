@@ -5,7 +5,7 @@ export const servicesStore: Service[] = INITIAL_SERVICES.map(service => ({ ...se
 
 export function findServiceById(id: string | null | undefined): Service | undefined {
   if (!id) return undefined
-  return servicesStore.find(service => service.id === id)
+  return servicesStore.find(service => service.id === id && !service.trashMetadata)
 }
 
 export function findServiceByIdForPractitioner(
@@ -13,5 +13,5 @@ export function findServiceByIdForPractitioner(
   practitionerId: string,
 ): Service | undefined {
   if (!id) return undefined
-  return servicesStore.find(service => service.id === id && service.practitionerId === practitionerId)
+  return servicesStore.find(service => service.id === id && service.practitionerId === practitionerId && !service.trashMetadata)
 }

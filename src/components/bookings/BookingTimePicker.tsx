@@ -11,7 +11,7 @@ import { cn } from '@/lib/cn'
 import { timeFmt } from '@/lib/dates'
 import { useIsDesktop } from '@/lib/useIsDesktop'
 import { usePractitioner } from '@/components/layout/PractitionerContext'
-import { hasBookingOverlap } from '@/lib/bookingValidation'
+import { hasBookingOverlap, isBookingAvailabilityBlocking } from '@/lib/bookingValidation'
 
 export type BookingTimePickerProps = {
   label?: string
@@ -100,7 +100,7 @@ export function BookingTimePicker({
   const practitionerBookings = useMemo(
     () =>
       existingBookings.filter(
-        booking => booking.practitionerId === practitionerId,
+        booking => isBookingAvailabilityBlocking(booking, practitionerId),
       ),
     [existingBookings, practitionerId],
   )

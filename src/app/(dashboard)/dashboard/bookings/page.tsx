@@ -43,12 +43,17 @@ import { withPractitionerHeaders } from '@/lib/practitioners'
 import * as PatientModel from '@/models/patient'
 import { toCoreView } from '@/models/patient.coreView'
 import { getErrorMessage } from '@/lib/errors'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { canUsePatientInActiveWorkflow } from '@/lib/patientWorkflow'
 
 type PatientOption = { id: string; name: string }
 type ViewMode = 'today' | 'upcoming' | 'past'
 type StatusFilter = 'all' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show'
 
 type BookingWithDates = Booking & { startD: Date; endD: Date }
+type BookingConfirmAction =
+  | { kind: 'delete'; booking: Booking }
+  | { kind: 'status'; booking: Booking; nextStatus: Booking['status']; title: string; description: string }
 
 const PAGE_SIZE = 10
 
@@ -113,6 +118,8 @@ export default function BookingsPage() {
   const [sessionBooking, setSessionBooking] = useState<Booking | null>(null)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [syncingGoogle, setSyncingGoogle] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<BookingConfirmAction | null>(null)
+  const [confirmLoading, setConfirmLoading] = useState(false)
 
   const statusOptions: FilterOption<StatusFilter>[] = [
     { value: 'all', label: 'All statuses' },
@@ -139,10 +146,12 @@ export default function BookingsPage() {
 
   const patientOptions: PatientOption[] = useMemo(
     () =>
-      patients.map(p => ({
-        id: p.id ?? '',
-        name: displayName(p),
-      })),
+      patients
+        .filter(canUsePatientInActiveWorkflow)
+        .map(p => ({
+          id: p.id ?? '',
+          name: displayName(p),
+        })),
     [patients],
   )
 
@@ -215,7 +224,7 @@ export default function BookingsPage() {
 
   function canRescheduleFromMenu(b: Booking, currentView: ViewMode) {
     if (currentView === 'past') return false
-    if (b.status === 'in-progress' || b.status === 'completed' || b.status === 'no-show') {
+    if (b.status === 'cancelled' || b.status === 'in-progress' || b.status === 'completed' || b.status === 'no-show') {
       return false
     }
     return true
@@ -254,17 +263,13 @@ export default function BookingsPage() {
     return true
   }
 
-  function confirmStatusChange(message: string) {
-    return window.confirm(message)
-  }
-
-  async function handleConfirmedStatusChange(
+  function openStatusConfirmation(
     b: Booking,
     next: Booking['status'],
-    message: string,
+    title: string,
+    description: string,
   ) {
-    if (!confirmStatusChange(message)) return null
-    return handleSetStatus(b, next)
+    setConfirmAction({ kind: 'status', booking: b, nextStatus: next, title, description })
   }
 
   async function handleStartVisit(b: Booking) {
@@ -350,10 +355,11 @@ export default function BookingsPage() {
         label: isPastBooking ? 'Mark as complete' : 'Complete visit',
         onSelect: () =>
           void (isPastBooking
-            ? handleConfirmedStatusChange(
+            ? openStatusConfirmation(
                 b,
                 'completed',
-                `Mark past booking ${b.code} as complete?`,
+                'Mark booking as complete?',
+                `This will update booking ${b.code} to completed.`,
               )
             : handleSetStatus(b, 'completed')),
       })
@@ -367,12 +373,13 @@ export default function BookingsPage() {
       extras.push({
         label: isPastBooking ? 'Mark as no-show' : 'Set no-show',
         onSelect: () =>
-          void handleConfirmedStatusChange(
+          openStatusConfirmation(
             b,
             'no-show',
+            'Mark booking as no-show?',
             isPastBooking
-              ? `Mark past booking ${b.code} as no-show?`
-              : `Mark booking ${b.code} as no-show?`,
+              ? `This will update past booking ${b.code} to no-show.`
+              : `This will update booking ${b.code} to no-show.`,
           ),
       })
     }
@@ -381,12 +388,13 @@ export default function BookingsPage() {
       extras.push({
         label: isPastBooking ? 'Mark as cancelled' : 'Cancel',
         onSelect: () =>
-          void handleConfirmedStatusChange(
+          openStatusConfirmation(
             b,
             'cancelled',
+            'Cancel booking?',
             isPastBooking
-              ? `Mark past booking ${b.code} as cancelled?`
-              : `Cancel booking ${b.code}?`,
+              ? `This will update past booking ${b.code} to cancelled.`
+              : `This will cancel booking ${b.code}.`,
           ),
         variant: 'danger',
       })
@@ -395,9 +403,24 @@ export default function BookingsPage() {
     return extras
   }
 
-  async function handleDeleteBooking(b: Booking) {
-    if (!confirm(`Delete booking ${b.code}? This cannot be undone.`)) return
-    await deleteBookingById(b.id)
+  function openDeleteBookingDialog(b: Booking) {
+    setConfirmAction({ kind: 'delete', booking: b })
+  }
+
+  async function handleConfirmBookingAction() {
+    if (!confirmAction) return
+    setConfirmLoading(true)
+    try {
+      if (confirmAction.kind === 'delete') {
+        await deleteBookingById(confirmAction.booking.id)
+        showSnackbar({ variant: 'success', message: 'Booking moved to Trash. You can restore it for 30 days.' })
+      } else {
+        await handleSetStatus(confirmAction.booking, confirmAction.nextStatus)
+      }
+      setConfirmAction(null)
+    } finally {
+      setConfirmLoading(false)
+    }
   }
 
 
@@ -589,7 +612,8 @@ export default function BookingsPage() {
                   <Td className="text-right">
                     <BookingActionButtons
                       onView={() => handleViewBooking(b)}
-                      onDelete={() => void handleDeleteBooking(b)}
+                      onDelete={() => openDeleteBookingDialog(b)}
+                      deleteLabel="Move booking to Trash"
                       extras={getBookingMenuItems(b, currentView)}
                     />
                   </Td>
@@ -652,7 +676,8 @@ export default function BookingsPage() {
             <div className="mt-3 flex justify-end">
               <BookingActionButtons
                 onView={() => handleViewBooking(b)}
-                onDelete={() => void handleDeleteBooking(b)}
+                onDelete={() => openDeleteBookingDialog(b)}
+                deleteLabel="Move booking to Trash"
                 extras={getBookingMenuItems(b, currentView)}
               />
             </div>
@@ -834,6 +859,29 @@ export default function BookingsPage() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmAction !== null}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={handleConfirmBookingAction}
+        loading={confirmLoading}
+        variant={confirmAction?.kind === 'delete' || confirmAction?.nextStatus === 'cancelled' ? 'destructive' : 'default'}
+        title={confirmAction?.kind === 'delete' ? 'Move booking to Trash?' : confirmAction?.title ?? 'Confirm booking update'}
+        description={
+          confirmAction?.kind === 'delete'
+            ? 'This booking will be moved to Trash for 30 days. Linked session references will be handled safely.'
+            : confirmAction?.description ?? ''
+        }
+        confirmLabel={confirmAction?.kind === 'delete' ? 'Move to Trash' : 'Confirm'}
+      >
+        {confirmAction ? (
+          <div className="space-y-1">
+            <p className="font-medium text-ink">{confirmAction.booking.code}</p>
+            <p>{names.get(confirmAction.booking.patientId) ?? confirmAction.booking.patientId}</p>
+            <p>{confirmAction.booking.serviceName}</p>
+          </div>
+        ) : null}
+      </ConfirmDialog>
 
       <BookingImportDialog
         open={importDialogOpen}

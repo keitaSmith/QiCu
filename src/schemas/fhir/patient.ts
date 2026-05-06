@@ -80,6 +80,15 @@ const PatientLink = z.object({
   type: z.enum(['replaced-by','replaces','refer','seealso']),
 })
 
+const TrashMetadata = z.object({
+  deletedAt: z.string().datetime(),
+  restoreUntil: z.string().datetime(),
+  deletedByPractitionerId: z.string(),
+  deletionGroupId: z.string(),
+  deletionType: z.enum(['patient-data', 'booking', 'session', 'service']),
+  deletionReason: z.string().optional(),
+})
+
 export const FhirPatientSchema = z.object({
   resourceType: z.literal('Patient'),
   id: fhirId,
@@ -127,6 +136,8 @@ export const FhirPatientSchema = z.object({
     valueDateTime: z.string().datetime().optional(),
     valueCode: z.string().optional(),
   })).optional(),
+
+  trashMetadata: TrashMetadata.optional(),
 })
 
 export type FhirPatientInput = z.infer<typeof FhirPatientSchema>

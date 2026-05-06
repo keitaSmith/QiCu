@@ -22,17 +22,31 @@ import { PatientsActionButtons } from '@/components/ui/RowActions'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { TableSkeleton } from '@/components/ui/TableSkeleton'
 import { CardListSkeleton } from '@/components/ui/CardListSkeleton'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 
 import { useRouter } from 'next/navigation'
 import { useIsDesktop } from '@/lib/useIsDesktop'
 import { usePatients } from '@/hooks/usePatients'
 import { useBookings } from '@/hooks/useBookings'
+import { useSessions } from '@/hooks/useSessions'
+import { useSnackbar } from '@/components/ui/Snackbar'
+import { withPractitionerHeaders } from '@/lib/practitioners'
 
 // Toggle this to inspect what's detected as "today"
 const DEBUG_TODAY = false
 
+type PatientImpact = {
+  pastBookings: number
+  futureBookings: number
+  bookings: number
+  sessions: number
+}
 
+type PatientConfirmAction =
+  | { kind: 'archive'; patient: FhirPatient; impact: PatientImpact }
+  | { kind: 'delete'; patient: FhirPatient; impact: PatientImpact }
 
+type ArchiveFutureBookingChoice = 'keep' | 'cancel'
 
 function classNames(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ')
@@ -41,6 +55,7 @@ function classNames(...classes: Array<string | false | null | undefined>) {
 export default function PatientsPage() {
   const router = useRouter()
   const isDesktop = useIsDesktop()
+  const { showSnackbar } = useSnackbar()
   const [q, setQ] = useState('')
   const [onlyToday, setOnlyToday] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
@@ -54,14 +69,17 @@ export default function PatientsPage() {
   }, [setRightPanelContent])
 
   const {
+    practitionerId,
     patients,
     loading,
     error,
     createPatientRecord,
     patchPatientById,
     deletePatientById,
+    replacePatient,
   } = usePatients()
   const { bookings } = useBookings()
+  const { sessions } = useSessions()
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -71,6 +89,10 @@ export default function PatientsPage() {
   //session dialog state
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false)
   const [sessionPatient, setSessionPatient] = useState<{ id: string; name: string } | null>(null)
+  const [patientConfirmAction, setPatientConfirmAction] = useState<PatientConfirmAction | null>(null)
+  const [archiveFutureBookingChoice, setArchiveFutureBookingChoice] =
+    useState<ArchiveFutureBookingChoice | null>(null)
+  const [confirmLoading, setConfirmLoading] = useState(false)
 
   const needle = q.trim().toLowerCase()
   const now = useMemo(() => new Date(), [])
@@ -147,6 +169,112 @@ function handleViewPatient(p: FhirPatient) {
     router.push(`/dashboard/patients/${p.id}`)
   }
 }
+
+function getPatientImpact(patientId: string) {
+  const now = Date.now()
+  const linkedBookings = bookings.filter(booking => booking.patientId === patientId)
+  const futureBookings = linkedBookings.filter(
+    booking => String(booking.status).toLowerCase() !== 'cancelled' && new Date(booking.start).getTime() > now,
+  ).length
+  return {
+    pastBookings: linkedBookings.filter(booking => new Date(booking.start).getTime() <= now).length,
+    futureBookings,
+    bookings: linkedBookings.length,
+    sessions: sessions.filter(session => session.patientId === patientId).length,
+  }
+}
+
+function openArchivePatientDialog(p: FhirPatient) {
+  const impact = getPatientImpact(p.id ?? '')
+  setArchiveFutureBookingChoice(impact.futureBookings > 0 ? null : 'keep')
+  setPatientConfirmAction({ kind: 'archive', patient: p, impact })
+}
+
+async function archivePatientFromDialog(p: FhirPatient) {
+  const res = await fetch(`/api/patients/${encodeURIComponent(p.id ?? '')}/archive`, {
+    method: 'POST',
+    headers: withPractitionerHeaders(practitionerId, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ cancelFutureBookings: archiveFutureBookingChoice === 'cancel' }),
+  })
+  const data = await res.json().catch(() => null)
+  if (!res.ok || !data?.patient) {
+    showSnackbar({ variant: 'error', message: data?.error ?? 'Failed to archive patient.' })
+    return
+  }
+
+  replacePatient(data.patient)
+  showSnackbar({ variant: 'success', message: 'Patient archived. History was preserved.' })
+}
+
+async function handleExportPatientData(p: FhirPatient) {
+  const res = await fetch(`/api/patients/${encodeURIComponent(p.id ?? '')}/export`, {
+    headers: withPractitionerHeaders(practitionerId),
+  })
+  const data = await res.json().catch(() => null)
+  if (!res.ok || !data) {
+    showSnackbar({ variant: 'error', message: data?.error ?? 'Failed to export patient data.' })
+    return
+  }
+
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `qicu-patient-${p.id ?? 'export'}.json`
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+  showSnackbar({ variant: 'success', message: 'Patient data exported.' })
+}
+
+function openDeletePatientDataDialog(p: FhirPatient) {
+  setArchiveFutureBookingChoice(null)
+  setPatientConfirmAction({ kind: 'delete', patient: p, impact: getPatientImpact(p.id ?? '') })
+}
+
+async function deletePatientDataFromDialog(p: FhirPatient) {
+  const moved = await deletePatientById(p.id ?? '')
+  if (moved) {
+    showSnackbar({ variant: 'success', message: 'Patient data moved to Trash. You can restore it for 30 days.' })
+    if (isDesktop) setRightPanelContent(null)
+  } else {
+    showSnackbar({ variant: 'error', message: 'Failed to move patient data to Trash.' })
+  }
+}
+
+async function handleConfirmPatientAction() {
+  if (!patientConfirmAction) return
+  if (
+    patientConfirmAction.kind === 'archive' &&
+    patientConfirmAction.impact.futureBookings > 0 &&
+    !archiveFutureBookingChoice
+  ) {
+    return
+  }
+  setConfirmLoading(true)
+  try {
+    if (patientConfirmAction.kind === 'archive') {
+      await archivePatientFromDialog(patientConfirmAction.patient)
+    } else {
+      await deletePatientDataFromDialog(patientConfirmAction.patient)
+    }
+    setPatientConfirmAction(null)
+    setArchiveFutureBookingChoice(null)
+  } finally {
+    setConfirmLoading(false)
+  }
+}
+
+function closePatientConfirmDialog() {
+  if (confirmLoading) return
+  setPatientConfirmAction(null)
+  setArchiveFutureBookingChoice(null)
+}
+
+  const archiveNeedsFutureBookingDecision =
+    patientConfirmAction?.kind === 'archive' && patientConfirmAction.impact.futureBookings > 0
+
   return (
     <div className="space-y-4">
       {/* Header / toolbar */}
@@ -274,11 +402,11 @@ function handleViewPatient(p: FhirPatient) {
         setDialogOpen(true)
       }}
       onDelete={async () => {
-        if (confirm(`Delete ${Patient.displayName(p)}? This cannot be undone.`)) {
-          await deletePatientById(p.id ?? '')
-        }
+        openDeletePatientDataDialog(p)
       }}
+      deleteLabel="Delete patient data"
       extras={[
+        { label: 'Export patient data', onSelect: () => void handleExportPatientData(p) },
         { label: 'Export PDF', onSelect: () => exportPatientPdf(p) },
         {
           label: 'Add session',
@@ -296,14 +424,12 @@ function handleViewPatient(p: FhirPatient) {
               onSelect: async () => {
                 const updated = Patient.unarchive(p)
                 await patchPatientById(p.id ?? '', updated)
+                showSnackbar({ variant: 'success', message: 'Patient reactivated.' })
               },
             }
           : {
-              label: 'Archive',
-              onSelect: async () => {
-                const updated = Patient.archive(p)
-                await patchPatientById(p.id ?? '', updated)
-              },
+              label: 'Archive patient',
+              onSelect: () => openArchivePatientDialog(p),
             },
         {
           label: 'New booking',
@@ -419,17 +545,14 @@ function handleViewPatient(p: FhirPatient) {
               setDialogOpen(true)
             }}
             onDelete={() => {
-              if (
-                confirm(
-                  `Delete ${Patient.displayName(
-                    p,
-                  )}? This cannot be undone.`,
-                )
-              ) {
-                void deletePatientById(p.id ?? '')
-              }
+              openDeletePatientDataDialog(p)
             }}
+            deleteLabel="Delete patient data"
             extras={[
+              {
+                label: 'Export patient data',
+                onSelect: () => void handleExportPatientData(p),
+              },
               {
                 label: 'Export PDF',
                 onSelect: () => exportPatientPdf(p),
@@ -450,14 +573,12 @@ function handleViewPatient(p: FhirPatient) {
                     onSelect: async () => {
                       const updated = Patient.unarchive(p)
                       await patchPatientById(p.id ?? '', updated)
+                      showSnackbar({ variant: 'success', message: 'Patient reactivated.' })
                     },
                   }
                 : {
-                    label: 'Archive',
-                    onSelect: async () => {
-                      const updated = Patient.archive(p)
-                      await patchPatientById(p.id ?? '', updated)
-                    },
+                    label: 'Archive patient',
+                    onSelect: () => openArchivePatientDialog(p),
                   },
               {
                 label: 'New booking',
@@ -482,6 +603,76 @@ function handleViewPatient(p: FhirPatient) {
 </div>
 
       {/* Dialog */}
+      <ConfirmDialog
+        open={patientConfirmAction !== null}
+        onClose={closePatientConfirmDialog}
+        onConfirm={handleConfirmPatientAction}
+        loading={confirmLoading}
+        confirmDisabled={archiveNeedsFutureBookingDecision && !archiveFutureBookingChoice}
+        variant={patientConfirmAction?.kind === 'delete' ? 'destructive' : 'default'}
+        title={patientConfirmAction?.kind === 'delete' ? 'Delete patient data?' : 'Archive patient?'}
+        description={
+          patientConfirmAction?.kind === 'delete'
+            ? 'This will move the patient and linked records to Trash for 30 days. You can restore them before then.'
+            : 'This patient will be removed from active patient lists, but their past bookings and session history will be kept.'
+        }
+        confirmLabel={patientConfirmAction?.kind === 'delete' ? 'Move to Trash' : 'Archive patient'}
+      >
+        {patientConfirmAction ? (
+          <div className="space-y-2">
+            <p className="font-medium text-ink">{Patient.displayName(patientConfirmAction.patient)}</p>
+            {patientConfirmAction.kind === 'archive' ? (
+              <>
+                <p>Past bookings preserved: {patientConfirmAction.impact.pastBookings}</p>
+                <p>Sessions preserved: {patientConfirmAction.impact.sessions}</p>
+                {patientConfirmAction.impact.futureBookings > 0 ? (
+                  <div className="space-y-3 pt-2">
+                    <p className="font-medium text-ink">
+                      This patient has {patientConfirmAction.impact.futureBookings} upcoming{' '}
+                      {patientConfirmAction.impact.futureBookings === 1 ? 'booking' : 'bookings'}.
+                    </p>
+                    <fieldset className="space-y-2">
+                      <legend className="text-sm font-medium text-ink">
+                        What should happen to the upcoming bookings?
+                      </legend>
+                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-brand-300/40 bg-surface px-3 py-2 hover:bg-brand-300/10">
+                        <input
+                          type="radio"
+                          name="archive-future-bookings"
+                          value="keep"
+                          checked={archiveFutureBookingChoice === 'keep'}
+                          onChange={() => setArchiveFutureBookingChoice('keep')}
+                          className="mt-0.5 h-4 w-4 border-brand-300 text-brand-700 focus:ring-brand-600"
+                        />
+                        <span>Keep upcoming bookings active</span>
+                      </label>
+                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-brand-300/40 bg-surface px-3 py-2 hover:bg-brand-300/10">
+                        <input
+                          type="radio"
+                          name="archive-future-bookings"
+                          value="cancel"
+                          checked={archiveFutureBookingChoice === 'cancel'}
+                          onChange={() => setArchiveFutureBookingChoice('cancel')}
+                          className="mt-0.5 h-4 w-4 border-brand-300 text-brand-700 focus:ring-brand-600"
+                        />
+                        <span>Cancel upcoming bookings</span>
+                      </label>
+                    </fieldset>
+                  </div>
+                ) : null}
+                <p className="text-ink/60">You can reactivate the patient later if needed.</p>
+              </>
+            ) : (
+              <>
+                <p>Bookings: {patientConfirmAction.impact.bookings}</p>
+                <p>Sessions: {patientConfirmAction.impact.sessions}</p>
+                <p className="text-ink/60">After 30 days, this data can be permanently deleted.</p>
+              </>
+            )}
+          </div>
+        ) : null}
+      </ConfirmDialog>
+
       <PatientDialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
