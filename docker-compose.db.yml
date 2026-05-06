@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: qicu-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: qicu_dev
+      POSTGRES_USER: qicu
+      POSTGRES_PASSWORD: qicu_dev_password
+    ports:
+      - "5431:5432"
+    volumes:
+      - qicu-postgres-dev-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qicu -d qicu_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  qicu-postgres-dev-data:

@@ -379,3 +379,11 @@ All domain repositories currently wrap existing in-memory stores/helpers. Runtim
 As part of the audit, Google import preview/reconcile access was moved behind existing patient, service, and booking repository seams while preserving the previous in-memory filtering and reconcile behavior. Repository tests cover practitioner scoping, active/archived/disabled filtering, Trash exclusion/grouping, booking availability statuses, linked and walk-in sessions, lifecycle restore behavior, and Google public status/scoping behavior.
 
 Phase D can begin with the simplest database-backed repository internals. Recommended order remains: practitioners first, then services, then patients. Remaining risks before deeper migrations are ID mapping consistency, preserving FHIR-like patient response shapes, service history snapshots on bookings/sessions, and keeping Google/lifecycle side effects isolated from early Drizzle-backed domains.
+
+## Implementation note: Phase D local database preflight
+
+Phase D preflight added a local Docker Compose PostgreSQL setup for development database work only, plus a non-destructive `db:check` script and local database setup documentation.
+
+No runtime repositories were moved to Drizzle-backed persistence. Runtime data still comes from in-memory stores/helpers, API response shapes remain unchanged, and Docker is used only for local PostgreSQL rather than the Next.js app.
+
+This preflight prepares the project to verify local migrations and deterministic development seeds before migrating repository internals. Phase D should still begin with practitioners, then services, then patients.
