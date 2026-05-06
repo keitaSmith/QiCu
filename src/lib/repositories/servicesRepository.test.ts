@@ -140,3 +140,14 @@ test('seeded DB services keep public IDs and disabled filtering when available',
   assert.equal(active.some(service => service.id === 'keita-moxa-45'), false)
   assert.equal(all.some(service => /^[0-9a-f-]{36}$/i.test(service.id)), false)
 })
+
+test('repeated DB-backed service reads do not duplicate runtime mirror rows', async () => {
+  const before = servicesStore.filter(item => item.id === 'tom-acu-60').length
+
+  await getById('prac-tom-cook', 'tom-acu-60')
+  await getById('prac-tom-cook', 'tom-acu-60')
+  await listActiveByPractitioner('prac-tom-cook')
+
+  const after = servicesStore.filter(item => item.id === 'tom-acu-60').length
+  assert.equal(after, before)
+})

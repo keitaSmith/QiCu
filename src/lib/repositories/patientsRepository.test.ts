@@ -126,3 +126,14 @@ test('seeded DB patients keep public IDs and FHIR-like shape when available', as
   assert.equal(alice?.extension?.some(item => item.valueString === 'prac-tom-cook'), true)
   assert.equal(await getById('prac-keita-smith', 'P-T-1001'), null)
 })
+
+test('repeated DB-backed patient reads do not duplicate runtime mirror rows', async () => {
+  const before = patientsStore.filter(item => item.id === 'P-T-1001').length
+
+  await getById('prac-tom-cook', 'P-T-1001')
+  await getById('prac-tom-cook', 'P-T-1001')
+  await listActiveByPractitioner('prac-tom-cook')
+
+  const after = patientsStore.filter(item => item.id === 'P-T-1001').length
+  assert.equal(after, before)
+})

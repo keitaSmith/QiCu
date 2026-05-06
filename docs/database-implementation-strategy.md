@@ -419,3 +419,11 @@ Patients keep their existing public IDs such as `P-T-1001` and `P-K-2001`. The d
 Bookings and sessions continue to reference public patient IDs and remain in-memory. During the transition, DB-backed patient reads and writes are mirrored into `patientsStore`, and patient lifecycle operations narrowly sync archived/trashed/restored patient state back to the database. This keeps archive, delete, restore, export, and active workflow checks consistent until lifecycle/Trash internals move to Drizzle.
 
 API routes still do not import Drizzle directly. Local DB-backed patients runtime requires the local database to be migrated and seeded first.
+
+## Implementation note: Phase D completion audit
+
+The Phase D completion audit confirmed that practitioners, services, and patients form the first Drizzle-backed runtime layer when PostgreSQL is available. Practitioners continue to map seeded database UUIDs back to public IDs such as `prac-tom-cook` and `prac-keita-smith`; services and patients use `public_id` compatibility columns so current public IDs such as `tom-acu-60`, `keita-cupping-30`, `P-T-1001`, and `P-K-2001` remain stable.
+
+Bookings, sessions, lifecycle, Trash, and Google integration remain backed by existing in-memory stores/helpers. Service and patient repository reads/writes continue to mirror into the in-memory stores for transition safety, and patient lifecycle operations keep narrow archive/delete/restore sync points until lifecycle and Trash move fully to Drizzle.
+
+API routes still do not import Drizzle directly, and route response shapes remain repository-owned rather than database-row-shaped. Phase E can begin after a manual browser smoke check of Patients, Services, Bookings, Sessions, Trash restore, Export, and Google import/reconcile flows.
