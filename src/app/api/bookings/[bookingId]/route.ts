@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { BOOKINGS } from '@/data/bookings'
 import type { BookingStatus } from '@/models/booking'
-import { findServiceByIdForPractitioner } from '@/data/servicesStore'
-import { applyBookingStatus } from '@/lib/bookingStatus'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
 import { syncGoogleOnBookingDelete, syncGoogleOnBookingUpdate } from '@/lib/google/sync'
-import { hasBookingOverlap } from '@/lib/bookingValidation'
-import { isTrashed, moveBookingToTrash } from '@/lib/dataLifecycle'
+import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
+import * as servicesRepository from '@/lib/repositories/servicesRepository'
 
 type UpdateBookingBody = {
   start?: string
@@ -25,7 +22,7 @@ export async function PATCH(
   const practitionerId = getPractitionerIdFromRequest(req)
   const { bookingId } = await context.params
 
-  const booking = BOOKINGS.find(b => b.id === bookingId && b.practitionerId === practitionerId && !isTrashed(b))
+  const booking = bookingsRepository.getById(practitionerId, bookingId)
 
   if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
@@ -65,60 +62,58 @@ export async function PATCH(
     )
   }
 
-  const practitionerBookings = BOOKINGS.filter(candidate => candidate.practitionerId === practitionerId && !isTrashed(candidate))
-
-  if (
-    hasBookingOverlap(
-      practitionerBookings,
-      nextStart.toISOString(),
-      nextEnd.toISOString(),
-      booking.id,
-    )
-  ) {
-    return NextResponse.json({ error: 'Booking overlaps an existing booking' }, { status: 409 })
-  }
-
-  if (body.start) {
-    booking.start = nextStart.toISOString()
-  }
-
-  if (body.end) {
-    booking.end = nextEnd.toISOString()
-  }
+  let serviceUpdate:
+    | { serviceId: string; serviceName: string; serviceDurationMinutes: number }
+    | undefined
 
   if (body.serviceId !== undefined) {
     if (!body.serviceId) {
       return NextResponse.json({ error: 'serviceId cannot be empty' }, { status: 400 })
     }
 
-    const svc = findServiceByIdForPractitioner(body.serviceId, practitionerId)
+    const svc = servicesRepository.getById(practitionerId, body.serviceId)
     if (!svc) {
       return NextResponse.json({ error: 'Unknown serviceId' }, { status: 400 })
     }
 
-    booking.serviceId = svc.id
-    booking.serviceName = svc.name
-    booking.serviceDurationMinutes = svc.durationMinutes
+    serviceUpdate = {
+      serviceId: svc.id,
+      serviceName: svc.name,
+      serviceDurationMinutes: svc.durationMinutes,
+    }
   }
 
-  if (body.resource !== undefined) {
-    booking.resource = body.resource?.trim() || undefined
+  const result = bookingsRepository.updateWithOverlapCheck(practitionerId, bookingId, {
+    start: body.start,
+    end: body.end,
+    resource: body.resource,
+    notes: body.notes,
+    status: body.status,
+    ...serviceUpdate,
+  })
+
+  if ('error' in result) {
+    if (result.error === 'overlap') {
+      return NextResponse.json({ error: 'Booking overlaps an existing booking' }, { status: 409 })
+    }
+    if (result.error === 'cancelled-reschedule') {
+      return NextResponse.json(
+        {
+          error: 'Cancelled bookings cannot be rescheduled. Create a new booking or change the status first.',
+        },
+        { status: 400 },
+      )
+    }
+    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  if (body.notes !== undefined) {
-    booking.notes = body.notes?.trim() || undefined
-  }
+  const updatedBooking = result.booking
 
-  if (body.status) {
-    const updated = applyBookingStatus(booking, body.status)
-    Object.assign(booking, updated)
-  }
-
-  await syncGoogleOnBookingUpdate(booking, req, {
+  await syncGoogleOnBookingUpdate(updatedBooking, req, {
     skip: body.skipGoogleWriteback === true,
   })
 
-  return NextResponse.json(booking, { status: 200 })
+  return NextResponse.json(updatedBooking, { status: 200 })
 }
 
 export async function DELETE(
@@ -128,7 +123,7 @@ export async function DELETE(
   const practitionerId = getPractitionerIdFromRequest(req)
   const { bookingId } = await context.params
 
-  const booking = BOOKINGS.find(b => b.id === bookingId && b.practitionerId === practitionerId && !isTrashed(b))
+  const booking = bookingsRepository.getById(practitionerId, bookingId)
 
   if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
@@ -136,7 +131,10 @@ export async function DELETE(
 
   await syncGoogleOnBookingDelete(booking, req)
 
-  const result = moveBookingToTrash(bookingId, practitionerId)
+  const result = bookingsRepository.moveToTrash(practitionerId, bookingId)
+  if (!result) {
+    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
 
   return NextResponse.json(
     {

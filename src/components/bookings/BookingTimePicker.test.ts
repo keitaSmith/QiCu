@@ -3,7 +3,12 @@ import test from 'node:test'
 
 import type { Booking } from '@/models/booking'
 import type { TrashMetadata } from '@/models/lifecycle'
-import { generateSlotsForDay } from './BookingTimePicker'
+import {
+  findNearestAvailableDate,
+  generateSlotsForDay,
+  hasAvailableSlotsForDate,
+  isDateSelectable,
+} from './BookingTimePicker'
 
 function buildBooking(overrides: Partial<Booking>): Booking {
   return {
@@ -163,4 +168,95 @@ test('excludes past time slots on the current day', () => {
   assert.equal(times.includes('09:00'), false)
   assert.equal(times.includes('09:15'), false)
   assert.equal(times.includes('09:30'), true)
+})
+
+test('findNearestAvailableDate keeps today when today has available slots', () => {
+  const today = new Date(2026, 4, 10)
+  const now = new Date(2026, 4, 10, 8, 0)
+
+  const next = findNearestAvailableDate(today, [], 60, now)
+
+  assert.equal(next?.toDateString(), today.toDateString())
+})
+
+test('findNearestAvailableDate skips today after working hours', () => {
+  const today = new Date(2026, 4, 10)
+  const now = new Date(2026, 4, 10, 21, 34)
+
+  const next = findNearestAvailableDate(today, [], 60, now)
+
+  assert.equal(next?.toDateString(), new Date(2026, 4, 11).toDateString())
+})
+
+test('days with no slots due to confirmed or pending bookings are not selectable', () => {
+  const date = new Date(2026, 4, 10)
+  const now = new Date(2026, 4, 10, 8, 0)
+
+  for (const status of ['confirmed', 'pending'] as const) {
+    const bookings = [
+      buildBooking({
+        id: `booking-full-day-${status}`,
+        status,
+        start: '2026-05-10T09:00:00',
+        end: '2026-05-10T17:00:00',
+      }),
+    ]
+
+    assert.equal(hasAvailableSlotsForDate(date, bookings, 60, now), false)
+    assert.equal(isDateSelectable(date, bookings, 60, now), false)
+  }
+})
+
+test('disabled no-slot day is skipped for nearest future enabled day', () => {
+  const today = new Date(2026, 4, 10)
+  const now = new Date(2026, 4, 10, 8, 0)
+  const bookings = [
+    buildBooking({
+      id: 'booking-full-today',
+      start: '2026-05-10T09:00:00',
+      end: '2026-05-10T17:00:00',
+    }),
+  ]
+
+  const next = findNearestAvailableDate(today, bookings, 60, now)
+
+  assert.equal(next?.toDateString(), new Date(2026, 4, 11).toDateString())
+})
+
+test('cancelled, no-show, and completed bookings do not make an otherwise available day unavailable', () => {
+  const date = new Date(2026, 4, 10)
+  const now = new Date(2026, 4, 10, 8, 0)
+
+  for (const status of ['cancelled', 'no-show', 'completed'] as const) {
+    const bookings = [
+      buildBooking({
+        id: `booking-non-blocking-day-${status}`,
+        status,
+        start: '2026-05-10T09:00:00',
+        end: '2026-05-10T17:00:00',
+      }),
+    ]
+
+    assert.equal(hasAvailableSlotsForDate(date, bookings, 60, now), true)
+    assert.equal(isDateSelectable(date, bookings, 60, now), true)
+  }
+})
+
+test('findNearestAvailableDate returns only a date and does not select a time slot', () => {
+  const today = new Date(2026, 4, 10, 21, 34)
+  const now = new Date(2026, 4, 10, 21, 34)
+
+  const next = findNearestAvailableDate(today, [], 60, now)
+
+  assert.equal(next?.getHours(), 0)
+  assert.equal(next?.getMinutes(), 0)
+})
+
+test('findNearestAvailableDate returns null when no day is available in the search window', () => {
+  const today = new Date(2026, 4, 10)
+  const now = new Date(2026, 4, 10, 21, 34)
+
+  const next = findNearestAvailableDate(today, [], 60, now, 1)
+
+  assert.equal(next, null)
 })

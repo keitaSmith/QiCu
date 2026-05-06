@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { Session } from '@/models/session'
-import { sessionsStore } from '@/data/sessionsStore'
-import { BOOKINGS } from '@/data/bookings'
-import { applyBookingStatus } from '@/lib/bookingStatus'
-import { findServiceByIdForPractitioner } from '@/data/servicesStore'
-import { getPractitionerIdFromRequest, patientBelongsToPractitioner } from '@/lib/practitioners'
-import { patientsStore } from '@/data/patientsStore'
-import { isTrashed } from '@/lib/dataLifecycle'
+import { getPractitionerIdFromRequest } from '@/lib/practitioners'
 import { canUsePatientInActiveWorkflow } from '@/lib/patientWorkflow'
+import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
+import * as patientsRepository from '@/lib/repositories/patientsRepository'
+import * as servicesRepository from '@/lib/repositories/servicesRepository'
+import * as sessionsRepository from '@/lib/repositories/sessionsRepository'
 
 type RouteParams = {
   params: Promise<{ patientId: string }>
@@ -16,17 +13,15 @@ type RouteParams = {
 export async function GET(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { patientId } = await params
-  const sessions = sessionsStore.filter(
-    session => session.patientId === patientId && session.practitionerId === practitionerId && !isTrashed(session),
-  )
+  const sessions = sessionsRepository.listByPatient(practitionerId, patientId)
   return NextResponse.json(sessions)
 }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { patientId } = await params
-  const patient = patientsStore.find(item => item.id === patientId && !isTrashed(item))
-  if (!patient || !patientBelongsToPractitioner(patient, practitionerId)) {
+  const patient = patientsRepository.getById(practitionerId, patientId)
+  if (!patient) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }
 
@@ -41,14 +36,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   const bookingId: string | null = body.bookingId ?? null
   const serviceId: string | undefined = body.serviceId ?? undefined
-  const service = findServiceByIdForPractitioner(serviceId, practitionerId)
+  const service = serviceId ? servicesRepository.getById(practitionerId, serviceId) : null
 
   if (serviceId && !service) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
   }
 
   if (bookingId) {
-    const booking = BOOKINGS.find(b => b.id === bookingId && b.practitionerId === practitionerId && !isTrashed(b))
+    const booking = bookingsRepository.getById(practitionerId, bookingId)
     if (!booking) {
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
     }
@@ -65,13 +60,11 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   const now = new Date()
   const booking = bookingId
-    ? BOOKINGS.find(item => item.id === bookingId && item.practitionerId === practitionerId)
+    ? bookingsRepository.getById(practitionerId, bookingId)
     : undefined
-  const resolvedService = service ?? findServiceByIdForPractitioner(booking?.serviceId, practitionerId)
+  const resolvedService = service ?? (booking?.serviceId ? servicesRepository.getById(practitionerId, booking.serviceId) : null)
 
-  const newSession: Session = {
-    id: `S-${Date.now()}`,
-    practitionerId,
+  const newSession = sessionsRepository.create(practitionerId, {
     patientId,
     startDateTime: body.startDateTime ?? now.toISOString(),
     serviceId: resolvedService?.id,
@@ -82,17 +75,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     treatmentNotes: body.treatmentNotes ?? '',
     techniques: body.techniques ?? [],
     bookingId,
-  }
-
-  sessionsStore.push(newSession)
-
-  if (bookingId && booking) {
-    booking.sessionId = newSession.id
-    if (booking.status === 'confirmed') {
-      const updated = applyBookingStatus(booking, 'in-progress')
-      Object.assign(booking, updated)
-    }
-  }
+  })
 
   return NextResponse.json(newSession, { status: 201 })
 }

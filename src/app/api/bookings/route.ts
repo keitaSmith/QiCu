@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { BOOKINGS } from '@/data/bookings'
-import { findServiceByIdForPractitioner } from '@/data/servicesStore'
 import type { Booking } from '@/models/booking'
 import {
   getPractitionerIdFromRequest,
-  getPatientPractitionerId,
 } from '@/lib/practitioners'
-import { patientsStore } from '@/data/patientsStore'
 import { syncGoogleOnBookingCreate } from '@/lib/google/sync'
-import { hasBookingOverlap } from '@/lib/bookingValidation'
-import { isTrashed } from '@/lib/dataLifecycle'
 import { canUsePatientInActiveWorkflow } from '@/lib/patientWorkflow'
+import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
+import * as patientsRepository from '@/lib/repositories/patientsRepository'
+import * as servicesRepository from '@/lib/repositories/servicesRepository'
 
 type CreateBookingBody = {
   patientId?: string
@@ -35,7 +32,7 @@ function generateBookingCode(practitionerId: string) {
 
 export async function GET(req: NextRequest) {
   const practitionerId = getPractitionerIdFromRequest(req)
-  return NextResponse.json(BOOKINGS.filter(booking => booking.practitionerId === practitionerId && !isTrashed(booking)), { status: 200 })
+  return NextResponse.json(bookingsRepository.listByPractitioner(practitionerId), { status: 200 })
 }
 
 export async function POST(req: NextRequest) {
@@ -47,8 +44,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'patientId is required' }, { status: 400 })
   }
 
-  const patient = patientsStore.find(item => item.id === patientId && !isTrashed(item))
-  if (!patient || getPatientPractitionerId(patient) !== practitionerId) {
+  const patient = patientsRepository.getById(practitionerId, patientId)
+  if (!patient) {
     return NextResponse.json({ error: 'Unknown patientId' }, { status: 400 })
   }
 
@@ -64,7 +61,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'serviceId is required' }, { status: 400 })
   }
 
-  const service = findServiceByIdForPractitioner(serviceId, practitionerId)
+  const service = servicesRepository.getById(practitionerId, serviceId)
   if (!service) {
     return NextResponse.json({ error: 'Unknown serviceId' }, { status: 400 })
   }
@@ -90,15 +87,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'end must be after start' }, { status: 400 })
   }
 
-  const practitionerBookings = BOOKINGS.filter(booking => booking.practitionerId === practitionerId && !isTrashed(booking))
-
-  if (hasBookingOverlap(practitionerBookings, start.toISOString(), end.toISOString())) {
-    return NextResponse.json({ error: 'Booking overlaps an existing booking' }, { status: 409 })
-  }
-
-  const created: Booking = {
-    id: crypto.randomUUID(),
-    practitionerId,
+  const result = bookingsRepository.createWithOverlapCheck(practitionerId, {
     code: generateBookingCode(practitionerId),
     patientId,
     serviceId: service.id,
@@ -113,9 +102,13 @@ export async function POST(req: NextRequest) {
     externalCalendarId: body.externalCalendarId?.trim() || null,
     externalEventId: body.externalEventId?.trim() || null,
     externalSyncStatus: body.externalSyncStatus ?? null,
+  })
+
+  if ('error' in result) {
+    return NextResponse.json({ error: 'Booking overlaps an existing booking' }, { status: 409 })
   }
 
-  BOOKINGS.unshift(created)
+  const created = result.booking
 
   await syncGoogleOnBookingCreate(created, req, {
     skip: body.skipGoogleWriteback === true || Boolean(body.externalEventId),

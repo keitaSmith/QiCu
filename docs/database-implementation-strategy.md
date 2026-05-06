@@ -345,3 +345,11 @@ Phase C introduced `src/lib/repositories/patientsRepository.ts` and `src/lib/rep
 These repositories currently wrap the existing in-memory stores and helpers. Runtime persistence is still not PostgreSQL, no Drizzle-backed repository internals were added, and the current app behavior remains backed by the existing demo stores.
 
 The patient and service API routes now call the repository seam for direct list, create, read, and update access while lifecycle/Trash behavior continues to use the existing lifecycle helpers. This prepares those repository internals to move to Drizzle later without changing API response shapes now.
+
+## Implementation note: Phase C.2 booking/session repository foundation
+
+Phase C.2 introduced `src/lib/repositories/bookingsRepository.ts` and `src/lib/repositories/sessionsRepository.ts`.
+
+These repositories currently wrap the existing in-memory booking and session stores. Runtime persistence is still not PostgreSQL, no Drizzle-backed repository internals were added, and route handlers do not import Drizzle for runtime data access.
+
+The booking and session API routes now use the repository seam where safe while preserving existing validation, Google Calendar sync behavior, lifecycle/Trash helpers, status semantics, and response shapes. The booking time picker also now focuses the nearest future day with available slots when the initially selected day has no slots, while keeping day/time selection behavior explicit.

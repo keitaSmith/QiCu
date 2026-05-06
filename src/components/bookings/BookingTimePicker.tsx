@@ -47,6 +47,14 @@ export function BookingTimePicker({
 
   const today = useMemo(() => startOfDay(new Date()), [])
 
+  const practitionerBookings = useMemo(
+    () =>
+      existingBookings.filter(
+        booking => isBookingAvailabilityBlocking(booking, practitionerId),
+      ),
+    [existingBookings, practitionerId],
+  )
+
   const selectedDateTime = useMemo(
     () => (value ? parseLocalDateTime(value) : null),
     [value],
@@ -59,9 +67,9 @@ export function BookingTimePicker({
     if (!duration) {
       return today
     }
-    const next = findFirstAvailableDate(new Date(), existingBookings, duration)
+    const next = findNearestAvailableDate(today, practitionerBookings, duration)
     return next ?? today
-  }, [selectedDateTime, today, duration, existingBookings])
+  }, [selectedDateTime, today, duration, practitionerBookings])
 
   const [monthYear, setMonthYear] = useState<MonthYear>(() => ({
     year: initialSelectedDate.getFullYear(),
@@ -97,14 +105,6 @@ export function BookingTimePicker({
     [monthYear.year, monthYear.monthIndex],
   )
 
-  const practitionerBookings = useMemo(
-    () =>
-      existingBookings.filter(
-        booking => isBookingAvailabilityBlocking(booking, practitionerId),
-      ),
-    [existingBookings, practitionerId],
-  )
-
   const slotsForSelectedDay = useMemo(() => {
     if (!selectedDate || !duration) return []
     return generateSlotsForDay(selectedDate, practitionerBookings, duration)
@@ -121,8 +121,22 @@ export function BookingTimePicker({
 
   const serviceMissing = !duration
 
+  const focusNearestSelectableDate = () => {
+    if (!duration) return
+
+    const preferred = selectedDate ?? (selectedDateTime ? startOfDay(selectedDateTime) : today)
+    const next = findNearestAvailableDate(preferred, practitionerBookings, duration)
+
+    if (!next) return
+
+    if (!selectedDate || !isSameLocalDay(selectedDate, next)) {
+      setSelectedDate(next)
+    }
+    setMonthYear({ year: next.getFullYear(), monthIndex: next.getMonth() })
+  }
+
   const handleDayClick = (day: Date) => {
-    if (isPastDay(day, today)) return
+    if (!duration || !isDateSelectable(day, practitionerBookings, duration, new Date(), today)) return
     setSelectedDate(day)
     // clear time when changing date
     onChange(null)
@@ -207,10 +221,10 @@ export function BookingTimePicker({
                 selectedDate && isSameLocalDay(day, selectedDate)
               const hasAvailability =
                 !!duration &&
-                generateSlotsForDay(day, practitionerBookings, duration).length > 0
+                hasAvailableSlotsForDate(day, practitionerBookings, duration)
 
               const isFull = !!(duration && !isPast && !hasAvailability)
-              const disabled = isPast || !hasAvailability
+              const disabled = !duration || isPast || !hasAvailability
 
               return (
                 <button
@@ -269,7 +283,7 @@ export function BookingTimePicker({
     if (slotsForSelectedDay.length === 0) {
       return (
         <p className="text-xs text-ink/50">
-          No available slots on this day. Choose another date.
+          No available slots found in the selected range.
         </p>
       )
     }
@@ -331,6 +345,9 @@ export function BookingTimePicker({
             onClick={() => {
               setIsOpen(open => {
                 const next = !open
+                if (next) {
+                  focusNearestSelectableDate()
+                }
                 if (!next) {
                   setShowSlotsOnlyMobile(false)
                 }
@@ -530,19 +547,41 @@ export function generateSlotsForDay(
   return slots
 }
 
-function findFirstAvailableDate(
+export function hasAvailableSlotsForDate(
+  date: Date,
+  bookings: Booking[],
+  durationMinutes: number,
+  now: Date = new Date(),
+) {
+  return generateSlotsForDay(date, bookings, durationMinutes, now).length > 0
+}
+
+export function isDateSelectable(
+  date: Date,
+  bookings: Booking[],
+  durationMinutes: number,
+  now: Date = new Date(),
+  today: Date = startOfDay(now),
+) {
+  return (
+    !isPastDay(date, today) &&
+    hasAvailableSlotsForDate(date, bookings, durationMinutes, now)
+  )
+}
+
+export function findNearestAvailableDate(
   from: Date,
   bookings: Booking[],
   durationMinutes: number,
+  now: Date = new Date(),
+  maxDaysToScan = 90,
 ): Date | null {
-  const maxDaysToScan = 90
   const start = startOfDay(from)
 
   for (let offset = 0; offset < maxDaysToScan; offset++) {
     const day = new Date(start)
     day.setDate(start.getDate() + offset)
-    const slots = generateSlotsForDay(day, bookings, durationMinutes)
-    if (slots.length > 0) {
+    if (isDateSelectable(day, bookings, durationMinutes, now, startOfDay(now))) {
       return day
     }
   }

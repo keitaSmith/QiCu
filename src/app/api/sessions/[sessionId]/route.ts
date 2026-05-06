@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
-import { sessionsStore } from '@/data/sessionsStore'
-import { BOOKINGS } from '@/data/bookings'
-import type { Session } from '@/models/session'
-import { findServiceByIdForPractitioner } from '@/data/servicesStore'
 import { getPractitionerIdFromRequest } from '@/lib/practitioners'
-import { isTrashed, moveSessionToTrash } from '@/lib/dataLifecycle'
+import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
+import * as servicesRepository from '@/lib/repositories/servicesRepository'
+import * as sessionsRepository from '@/lib/repositories/sessionsRepository'
 
 type RouteParams = {
   params: Promise<{ sessionId: string }>
@@ -23,20 +21,13 @@ const updateSessionSchema = z.object({
   bookingId: z.string().nullable().optional(),
 })
 
-function unlinkBookingBySessionId(sessionId: string, practitionerId: string) {
-  const linkedBooking = BOOKINGS.find(
-    booking => booking.sessionId === sessionId && booking.practitionerId === practitionerId,
-  )
-  if (linkedBooking) linkedBooking.sessionId = undefined
-}
-
 function ensureBookingCanLink(
   sessionId: string,
   patientId: string,
   bookingId: string,
   practitionerId: string,
 ) {
-  const booking = BOOKINGS.find(item => item.id === bookingId && item.practitionerId === practitionerId && !isTrashed(item))
+  const booking = bookingsRepository.getById(practitionerId, bookingId)
 
   if (!booking) return { error: 'Booking not found', status: 404 as const }
   if (booking.patientId !== patientId) {
@@ -55,7 +46,7 @@ function ensureBookingCanLink(
 export async function GET(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { sessionId } = await params
-  const session = sessionsStore.find(s => s.id === sessionId && s.practitionerId === practitionerId && !isTrashed(s))
+  const session = sessionsRepository.getById(practitionerId, sessionId)
 
   if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(session)
@@ -64,8 +55,8 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { sessionId } = await params
-  const index = sessionsStore.findIndex(s => s.id === sessionId && s.practitionerId === practitionerId && !isTrashed(s))
-  if (index === -1) {
+  const current = sessionsRepository.getById(practitionerId, sessionId)
+  if (!current) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 
@@ -75,11 +66,10 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
 
-  const current = sessionsStore[index]
   const nextBookingId = parsed.data.bookingId
 
   if (nextBookingId !== undefined) {
-    unlinkBookingBySessionId(sessionId, practitionerId)
+    sessionsRepository.unlinkBookingBySessionId(practitionerId, sessionId)
 
     if (nextBookingId) {
       const result = ensureBookingCanLink(sessionId, current.patientId, nextBookingId, practitionerId)
@@ -92,33 +82,33 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
   let nextServiceName = current.serviceName
   if (parsed.data.serviceId) {
-    const service = findServiceByIdForPractitioner(parsed.data.serviceId, practitionerId)
+    const service = servicesRepository.getById(practitionerId, parsed.data.serviceId)
     if (!service) {
       return NextResponse.json({ error: 'Service not found' }, { status: 404 })
     }
     nextServiceName = service.name
   }
 
-  const updated: Session = {
-    ...current,
+  const updated = sessionsRepository.update(practitionerId, sessionId, {
     ...parsed.data,
-    practitionerId,
     serviceName: nextServiceName,
-  }
+  })
 
-  sessionsStore[index] = updated
   return NextResponse.json(updated)
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   const practitionerId = getPractitionerIdFromRequest(req)
   const { sessionId } = await params
-  const session = sessionsStore.find(s => s.id === sessionId && s.practitionerId === practitionerId && !isTrashed(s))
+  const session = sessionsRepository.getById(practitionerId, sessionId)
   if (!session) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 
-  const result = moveSessionToTrash(sessionId, practitionerId)
+  const result = sessionsRepository.moveToTrash(practitionerId, sessionId)
+  if (!result) {
+    return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+  }
 
   return NextResponse.json(
     {

@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { BOOKINGS } from '@/data/bookings'
-import type { Booking } from '@/models/booking'
-import { findServiceByIdForPractitioner } from '@/data/servicesStore'
-import { getPractitionerIdFromRequest, patientBelongsToPractitioner } from '@/lib/practitioners'
-import { patientsStore } from '@/data/patientsStore'
-import { hasBookingOverlap } from '@/lib/bookingValidation'
-import { isTrashed } from '@/lib/dataLifecycle'
+import { getPractitionerIdFromRequest } from '@/lib/practitioners'
 import { canUsePatientInActiveWorkflow } from '@/lib/patientWorkflow'
+import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
+import * as patientsRepository from '@/lib/repositories/patientsRepository'
+import * as servicesRepository from '@/lib/repositories/servicesRepository'
 
 type CreateBookingBody = {
   start: string
@@ -23,8 +20,8 @@ export async function POST(
   const practitionerId = getPractitionerIdFromRequest(req)
   const { patientId } = await context.params
 
-  const patient = patientsStore.find(item => item.id === patientId && !isTrashed(item))
-  if (!patient || !patientBelongsToPractitioner(patient, practitionerId)) {
+  const patient = patientsRepository.getById(practitionerId, patientId)
+  if (!patient) {
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }
 
@@ -52,13 +49,7 @@ export async function POST(
     return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 })
   }
 
-  const practitionerBookings = BOOKINGS.filter(booking => booking.practitionerId === practitionerId && !isTrashed(booking))
-
-  if (hasBookingOverlap(practitionerBookings, start.toISOString(), end.toISOString())) {
-    return NextResponse.json({ error: 'Booking overlaps an existing booking' }, { status: 409 })
-  }
-
-  const svc = findServiceByIdForPractitioner(body.serviceId, practitionerId)
+  const svc = servicesRepository.getById(practitionerId, body.serviceId)
   if (!svc) {
     return NextResponse.json({ error: 'Unknown serviceId' }, { status: 400 })
   }
@@ -73,9 +64,8 @@ export async function POST(
   const id = crypto.randomUUID()
   const code = `BKG-${practitionerId === 'prac-keita-smith' ? 'KEI' : 'TOM'}-${id.slice(0, 4).toUpperCase()}`
 
-  const newBooking: Booking = {
+  const result = bookingsRepository.createWithOverlapCheck(practitionerId, {
     id,
-    practitionerId,
     code,
     patientId,
     serviceId: svc.id,
@@ -86,9 +76,11 @@ export async function POST(
     end: end.toISOString(),
     status: 'confirmed',
     notes: body.notes?.trim() || undefined,
+  }, { insert: 'end' })
+
+  if ('error' in result) {
+    return NextResponse.json({ error: 'Booking overlaps an existing booking' }, { status: 409 })
   }
 
-  BOOKINGS.push(newBooking)
-
-  return NextResponse.json(newBooking, { status: 201 })
+  return NextResponse.json(result.booking, { status: 201 })
 }
