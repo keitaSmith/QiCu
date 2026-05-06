@@ -10,6 +10,7 @@
     "test": "node --test --import tsx \"src/**/*.test.ts\"",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:seed": "tsx src/db/seeds/seedDev.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {

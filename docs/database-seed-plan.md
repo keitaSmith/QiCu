@@ -365,3 +365,20 @@ Risks and guardrails:
 ## Recommended next implementation task
 
 Review this seed plan manually, then create deterministic seed ID mapping constants and a development seed script using Drizzle. The seed script should insert development data in schema order and keep test fixtures separate, but it should not wire app routes to database persistence yet.
+
+## Implementation note: Phase B seed foundation
+
+Drizzle Phase B seed foundation added deterministic UUID mappings and development seed files under `src/db/seeds/`:
+
+- `ids.ts`
+- `demoPractitioners.ts`
+- `demoPatients.ts`
+- `demoServices.ts`
+- `demoBookings.ts`
+- `demoSessions.ts`
+- `seedDev.ts`
+- `README.md`
+
+The `db:seed` package script runs the development seed script with `tsx`. The script is non-destructive, uses idempotent inserts where existing IDs are skipped, blocks `NODE_ENV=production`, and requires `DATABASE_URL`.
+
+Current runtime behavior remains unchanged. The app still uses in-memory stores, no API routes were rewritten, no repository layer was added, and no reset/destructive command was added.
