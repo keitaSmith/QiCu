@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
 import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
 
 type RouteParams = {
@@ -8,7 +8,7 @@ type RouteParams = {
 }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const { patientId } = await params
 
   try {

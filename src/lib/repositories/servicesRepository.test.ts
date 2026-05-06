@@ -7,6 +7,7 @@ import type { Service } from '@/models/service'
 import {
   create,
   getById,
+  listByPractitionerIncludingDisabled,
   listActiveByPractitioner,
   listGoogleImportCandidates,
   update,
@@ -51,7 +52,7 @@ function trashMetadata(): TrashMetadata {
 
 afterEach(cleanup)
 
-test('listActiveByPractitioner returns only scoped, active, non-trashed services', () => {
+test('listActiveByPractitioner returns only scoped, active, non-trashed services', async () => {
   cleanup()
   const active = service({ id: 'svc-repo-active' })
   const disabled = service({ id: 'svc-repo-disabled', active: false })
@@ -59,7 +60,7 @@ test('listActiveByPractitioner returns only scoped, active, non-trashed services
   const other = service({ id: 'svc-repo-other', practitionerId: otherPractitionerId })
   servicesStore.push(active, disabled, trashed, other)
 
-  const result = listActiveByPractitioner(practitionerId)
+  const result = await listActiveByPractitioner(practitionerId)
 
   assert.equal(result.some(item => item.id === active.id), true)
   assert.equal(result.some(item => item.id === disabled.id), false)
@@ -67,20 +68,20 @@ test('listActiveByPractitioner returns only scoped, active, non-trashed services
   assert.equal(result.some(item => item.id === other.id), false)
 })
 
-test('getById respects practitioner scope and trash state', () => {
+test('getById respects practitioner scope and trash state', async () => {
   cleanup()
   const scoped = service({ id: 'svc-repo-get' })
   const trashed = service({ id: 'svc-repo-get-trashed', trashMetadata: trashMetadata() })
   servicesStore.push(scoped, trashed)
 
-  assert.equal(getById(practitionerId, scoped.id)?.id, scoped.id)
-  assert.equal(getById(otherPractitionerId, scoped.id), null)
-  assert.equal(getById(practitionerId, trashed.id), null)
+  assert.equal((await getById(practitionerId, scoped.id))?.id, scoped.id)
+  assert.equal(await getById(otherPractitionerId, scoped.id), null)
+  assert.equal(await getById(practitionerId, trashed.id), null)
 })
 
-test('create assigns practitioner ownership', () => {
+test('create assigns practitioner ownership', async () => {
   cleanup()
-  const created = create(practitionerId, {
+  const created = await create(practitionerId, {
     name: 'Repository Created Service',
     durationMinutes: 30,
     description: ' Created from test ',
@@ -90,17 +91,17 @@ test('create assigns practitioner ownership', () => {
   assert.equal(created.name, 'Repository Created Service')
   assert.equal(created.durationMinutes, 30)
   assert.equal(created.description, 'Created from test')
-  assert.equal(getById(practitionerId, created.id)?.id, created.id)
+  assert.equal((await getById(practitionerId, created.id))?.id, created.id)
 })
 
-test('update respects practitioner scope', () => {
+test('update respects practitioner scope', async () => {
   cleanup()
   const existing = service({ id: 'svc-repo-update' })
   servicesStore.push(existing)
 
-  assert.equal(update(otherPractitionerId, existing.id, { name: 'Wrong Scope' }), null)
+  assert.equal(await update(otherPractitionerId, existing.id, { name: 'Wrong Scope' }), null)
 
-  const updated = update(practitionerId, existing.id, {
+  const updated = await update(practitionerId, existing.id, {
     name: 'Updated Service',
     durationMinutes: 60,
     active: false,
@@ -112,7 +113,7 @@ test('update respects practitioner scope', () => {
   assert.equal(updated?.active, false)
 })
 
-test('listGoogleImportCandidates preserves practitioner-scoped preview candidates', () => {
+test('listGoogleImportCandidates preserves practitioner-scoped preview candidates', async () => {
   cleanup()
   const active = service({ id: 'svc-repo-google-active' })
   const trashed = service({ id: 'svc-repo-google-trashed', trashMetadata: trashMetadata() })
@@ -120,7 +121,22 @@ test('listGoogleImportCandidates preserves practitioner-scoped preview candidate
   servicesStore.push(active, trashed, other)
 
   assert.deepEqual(
-    listGoogleImportCandidates(practitionerId).map(item => item.id).sort(),
+    (await listGoogleImportCandidates(practitionerId)).map(item => item.id).sort(),
     [active.id, trashed.id].sort(),
   )
+})
+
+test('seeded DB services keep public IDs and disabled filtering when available', async () => {
+  const all = await listByPractitionerIncludingDisabled('prac-keita-smith')
+  const active = await listActiveByPractitioner('prac-keita-smith')
+  const cupping = await getById('prac-keita-smith', 'keita-cupping-30')
+  const moxa = await getById('prac-keita-smith', 'keita-moxa-45')
+
+  assert.equal(cupping?.id, 'keita-cupping-30')
+  assert.equal(cupping?.practitionerId, 'prac-keita-smith')
+  assert.equal(moxa?.id, 'keita-moxa-45')
+  assert.equal(moxa?.active, false)
+  assert.equal(all.some(service => service.id === 'keita-moxa-45'), true)
+  assert.equal(active.some(service => service.id === 'keita-moxa-45'), false)
+  assert.equal(all.some(service => /^[0-9a-f-]{36}$/i.test(service.id)), false)
 })

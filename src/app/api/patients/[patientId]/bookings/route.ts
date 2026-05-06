@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
 import { canUsePatientInActiveWorkflow } from '@/lib/patientWorkflow'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
 import * as patientsRepository from '@/lib/repositories/patientsRepository'
@@ -17,7 +17,7 @@ export async function POST(
   req: NextRequest,
   context: { params: Promise<{ patientId: string }> },
 ) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const { patientId } = await context.params
 
   const patient = patientsRepository.getById(practitionerId, patientId)
@@ -49,7 +49,7 @@ export async function POST(
     return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 })
   }
 
-  const svc = servicesRepository.getById(practitionerId, body.serviceId)
+  const svc = await servicesRepository.getById(practitionerId, body.serviceId)
   if (!svc) {
     return NextResponse.json({ error: 'Unknown serviceId' }, { status: 400 })
   }

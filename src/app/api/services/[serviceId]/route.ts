@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import type { Service } from '@/models/service'
-import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
 import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
 import * as servicesRepository from '@/lib/repositories/servicesRepository'
 
@@ -10,9 +10,9 @@ type RouteParams = {
 }
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const { serviceId } = await params
-  const service = servicesRepository.getById(practitionerId, serviceId)
+  const service = await servicesRepository.getById(practitionerId, serviceId)
 
   if (!service) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
@@ -22,9 +22,9 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const { serviceId } = await params
-  const current = servicesRepository.getById(practitionerId, serviceId)
+  const current = await servicesRepository.getById(practitionerId, serviceId)
 
   if (!current) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
@@ -42,7 +42,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'durationMinutes must be greater than 0' }, { status: 400 })
   }
 
-  const duplicate = servicesRepository.findDuplicate(practitionerId, nextName, nextDurationMinutes, {
+  const duplicate = await servicesRepository.findDuplicate(practitionerId, nextName, nextDurationMinutes, {
     excludeServiceId: serviceId,
   })
 
@@ -53,7 +53,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     )
   }
 
-  const updated = servicesRepository.update(practitionerId, serviceId, {
+  const updated = await servicesRepository.update(practitionerId, serviceId, {
     ...body,
     name: nextName,
     durationMinutes: nextDurationMinutes,
@@ -69,9 +69,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const { serviceId } = await params
-  const service = servicesRepository.getById(practitionerId, serviceId)
+  const service = await servicesRepository.getById(practitionerId, serviceId)
 
   if (!service) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })

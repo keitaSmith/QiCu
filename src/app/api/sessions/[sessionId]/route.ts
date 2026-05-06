@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
-import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
 import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
 import * as servicesRepository from '@/lib/repositories/servicesRepository'
@@ -45,7 +45,7 @@ function ensureBookingCanLink(
 }
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const { sessionId } = await params
   const session = sessionsRepository.getById(practitionerId, sessionId)
 
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const { sessionId } = await params
   const current = sessionsRepository.getById(practitionerId, sessionId)
   if (!current) {
@@ -83,7 +83,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
   let nextServiceName = current.serviceName
   if (parsed.data.serviceId) {
-    const service = servicesRepository.getById(practitionerId, parsed.data.serviceId)
+    const service = await servicesRepository.getById(practitionerId, parsed.data.serviceId)
     if (!service) {
       return NextResponse.json({ error: 'Service not found' }, { status: 404 })
     }
@@ -99,7 +99,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const { sessionId } = await params
   const session = sessionsRepository.getById(practitionerId, sessionId)
   if (!session) {

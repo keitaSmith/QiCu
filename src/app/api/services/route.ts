@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import type { Service } from '@/models/service'
-import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
 import * as servicesRepository from '@/lib/repositories/servicesRepository'
 
 export async function GET(req: NextRequest) {
-  const practitionerId = getPractitionerIdFromRequest(req)
-  return NextResponse.json(servicesRepository.listByPractitionerIncludingDisabled(practitionerId), { status: 200 })
+  const practitionerId = await getPractitionerIdFromRequest(req)
+  return NextResponse.json(await servicesRepository.listByPractitionerIncludingDisabled(practitionerId), { status: 200 })
 }
 
 export async function POST(req: NextRequest) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const body = (await req.json()) as Partial<Service>
   const name = body.name?.trim()
   const durationMinutes = Number(body.durationMinutes)
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'durationMinutes must be greater than 0' }, { status: 400 })
   }
 
-  const duplicate = servicesRepository.findDuplicate(practitionerId, name, durationMinutes)
+  const duplicate = await servicesRepository.findDuplicate(practitionerId, name, durationMinutes)
 
   if (duplicate) {
     return NextResponse.json(
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const created = servicesRepository.create(practitionerId, {
+  const created = await servicesRepository.create(practitionerId, {
     name,
     durationMinutes,
     description,

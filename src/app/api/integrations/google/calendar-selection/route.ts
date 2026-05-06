@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
 import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrationsRepository'
 
 type Body = {
@@ -9,7 +9,7 @@ type Body = {
 }
 
 export async function POST(req: NextRequest) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const body = (await req.json()) as Body
   const calendarId = body.calendarId?.trim()
 

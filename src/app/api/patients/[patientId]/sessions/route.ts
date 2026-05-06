@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
 import { canUsePatientInActiveWorkflow } from '@/lib/patientWorkflow'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
 import * as patientsRepository from '@/lib/repositories/patientsRepository'
@@ -11,14 +11,14 @@ type RouteParams = {
 }
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const { patientId } = await params
   const sessions = sessionsRepository.listByPatient(practitionerId, patientId)
   return NextResponse.json(sessions)
 }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const { patientId } = await params
   const patient = patientsRepository.getById(practitionerId, patientId)
   if (!patient) {
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   const bookingId: string | null = body.bookingId ?? null
   const serviceId: string | undefined = body.serviceId ?? undefined
-  const service = serviceId ? servicesRepository.getById(practitionerId, serviceId) : null
+  const service = serviceId ? await servicesRepository.getById(practitionerId, serviceId) : null
 
   if (serviceId && !service) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   const booking = bookingId
     ? bookingsRepository.getById(practitionerId, bookingId)
     : undefined
-  const resolvedService = service ?? (booking?.serviceId ? servicesRepository.getById(practitionerId, booking.serviceId) : null)
+  const resolvedService = service ?? (booking?.serviceId ? await servicesRepository.getById(practitionerId, booking.serviceId) : null)
 
   const newSession = sessionsRepository.create(practitionerId, {
     patientId,

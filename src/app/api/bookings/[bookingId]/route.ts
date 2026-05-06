@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { BookingStatus } from '@/models/booking'
-import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
 import { syncGoogleOnBookingDelete, syncGoogleOnBookingUpdate } from '@/lib/google/sync'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
 import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
@@ -20,7 +20,7 @@ export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ bookingId: string }> },
 ) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const { bookingId } = await context.params
 
   const booking = bookingsRepository.getById(practitionerId, bookingId)
@@ -72,7 +72,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'serviceId cannot be empty' }, { status: 400 })
     }
 
-    const svc = servicesRepository.getById(practitionerId, body.serviceId)
+    const svc = await servicesRepository.getById(practitionerId, body.serviceId)
     if (!svc) {
       return NextResponse.json({ error: 'Unknown serviceId' }, { status: 400 })
     }
@@ -121,7 +121,7 @@ export async function DELETE(
   req: NextRequest,
   context: { params: Promise<{ bookingId: string }> },
 ) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const { bookingId } = await context.params
 
   const booking = bookingsRepository.getById(practitionerId, bookingId)

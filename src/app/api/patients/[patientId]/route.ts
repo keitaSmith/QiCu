@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 
 import type { FhirPatient } from '@/models/patient'
-import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
 import * as patientsRepository from '@/lib/repositories/patientsRepository'
 import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
 
@@ -11,7 +11,7 @@ type RouteParams = {
 }
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const { patientId } = await params
   const patient = patientsRepository.getById(practitionerId, patientId)
 
@@ -41,7 +41,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const { patientId } = await params
   const patient = patientsRepository.getById(practitionerId, patientId)
 

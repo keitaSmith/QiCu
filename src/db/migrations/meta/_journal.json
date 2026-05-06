@@ -8,6 +8,13 @@
       "when": 1778036981176,
       "tag": "0000_sticky_colossus",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778103211341,
+      "tag": "0001_wealthy_spyke",
+      "breakpoints": true
     }
   ]
 }

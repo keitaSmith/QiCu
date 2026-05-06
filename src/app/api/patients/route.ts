@@ -2,17 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 
 import type { FhirPatient } from '@/models/patient'
-import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
 import * as patientsRepository from '@/lib/repositories/patientsRepository'
 
 export async function GET(req: NextRequest) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const patients = patientsRepository.listByPractitionerIncludingArchived(practitionerId)
   return NextResponse.json(patients, { status: 200 })
 }
 
 export async function POST(req: NextRequest) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
 
   try {
     const body = (await req.json()) as FhirPatient

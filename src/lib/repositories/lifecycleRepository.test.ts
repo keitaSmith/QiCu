@@ -189,11 +189,11 @@ test('individual booking and session Trash behavior preserves runtime links', ()
   assert.equal(isTrashed(session), false)
 })
 
-test('service disable is separate from service Trash delete', () => {
+test('service disable is separate from service Trash delete', async () => {
   cleanup()
   const service = addService()
 
-  const disabled = disableService(practitionerId, service.id)
+  const disabled = await disableService(practitionerId, service.id)
   assert.equal(disabled?.active, false)
   assert.equal(isTrashed(service), false)
 

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { Booking } from '@/models/booking'
 import {
   getPractitionerIdFromRequest,
-} from '@/lib/practitioners'
+} from '@/lib/practitionerRequest'
 import { syncGoogleOnBookingCreate } from '@/lib/google/sync'
 import { canUsePatientInActiveWorkflow } from '@/lib/patientWorkflow'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
@@ -31,12 +31,12 @@ function generateBookingCode(practitionerId: string) {
 }
 
 export async function GET(req: NextRequest) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   return NextResponse.json(bookingsRepository.listByPractitioner(practitionerId), { status: 200 })
 }
 
 export async function POST(req: NextRequest) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const body = (await req.json()) as CreateBookingBody
 
   const patientId = body.patientId?.trim()
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'serviceId is required' }, { status: 400 })
   }
 
-  const service = servicesRepository.getById(practitionerId, serviceId)
+  const service = await servicesRepository.getById(practitionerId, serviceId)
   if (!service) {
     return NextResponse.json({ error: 'Unknown serviceId' }, { status: 400 })
   }

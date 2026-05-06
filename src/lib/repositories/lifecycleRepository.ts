@@ -65,7 +65,7 @@ export function moveServiceToTrash(
   return moveServiceToTrashInMemory(serviceId, practitionerId, options.now)
 }
 
-export function disableService(practitionerId: string, serviceId: string) {
+export async function disableService(practitionerId: string, serviceId: string) {
   return servicesRepository.disable(practitionerId, serviceId)
 }
 
@@ -84,4 +84,3 @@ export function purgeExpiredTrash(options: { now?: Date } = {}) {
 export function buildPatientExport(practitionerId: string, patientId: string) {
   return buildPatientFullExport(patientId, practitionerId)
 }
-

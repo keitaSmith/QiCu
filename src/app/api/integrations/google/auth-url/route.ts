@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { buildGoogleAuthUrl, hasGoogleCalendarEnv } from '@/lib/google/auth'
-import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
 
 export async function GET(req: NextRequest) {
   if (!hasGoogleCalendarEnv()) {
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const url = buildGoogleAuthUrl(practitionerId, req)
   return NextResponse.json({ url }, { status: 200 })
 }

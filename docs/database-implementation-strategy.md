@@ -387,3 +387,25 @@ Phase D preflight added a local Docker Compose PostgreSQL setup for development 
 No runtime repositories were moved to Drizzle-backed persistence. Runtime data still comes from in-memory stores/helpers, API response shapes remain unchanged, and Docker is used only for local PostgreSQL rather than the Next.js app.
 
 This preflight prepares the project to verify local migrations and deterministic development seeds before migrating repository internals. Phase D should still begin with practitioners, then services, then patients.
+
+## Implementation note: Phase D.1 practitioner Drizzle runtime foundation
+
+Phase D.1 introduced `src/lib/repositories/practitionersRepository.ts` as the first Drizzle-backed runtime repository.
+
+Practitioner lookup now reads seeded practitioner rows through Drizzle when PostgreSQL is available, then maps deterministic database UUIDs back to the existing public demo IDs such as `prac-tom-cook` and `prac-keita-smith`. This preserves the current `x-qicu-practitioner-id` header behavior and keeps all existing in-memory patient, service, booking, session, lifecycle, Trash, and Google scoping stable during the transition.
+
+The repository keeps a small demo compatibility fallback so normal tests and builds do not require a live database. Local runtime database-backed practitioner lookup requires the local database to be migrated and seeded first.
+
+Patients, services, bookings, sessions, lifecycle, Trash, and Google integration runtime persistence remain backed by existing in-memory stores/helpers. API routes still do not import Drizzle directly.
+
+## Implementation note: Phase D.2 services Drizzle runtime foundation
+
+Phase D.2 moved `src/lib/repositories/servicesRepository.ts` to Drizzle-backed runtime persistence when PostgreSQL is available. Practitioners remain Drizzle-backed, while patients, bookings, sessions, lifecycle, Trash, and Google integration runtime persistence still use existing in-memory stores/helpers.
+
+Services keep their existing public IDs such as `tom-acu-60` and `keita-cupping-30`. The database still uses UUID primary keys internally, with a `services.public_id` compatibility column for public app IDs and seeded ID mapping. This keeps current API response shapes stable and prevents booking/session service snapshots from exposing database UUIDs.
+
+The service repository accepts public service IDs from routes and maps them to database rows internally. Active/disabled filtering, practitioner scoping, normal Trash exclusion, duplicate detection, create, update, and disable behavior remain compatible with the previous repository contract.
+
+Because lifecycle/Trash helpers have not moved to Drizzle yet, service rows read or written through Drizzle are mirrored into the existing in-memory service store during this transition. This preserves service disable/delete impact behavior until lifecycle/Trash persistence is migrated.
+
+API routes still do not import Drizzle directly. Local DB-backed services runtime requires the local database to be migrated and seeded first.

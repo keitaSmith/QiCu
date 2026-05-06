@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { getGoogleCalendarEvent } from '@/lib/google/calendarApi'
-import { getPractitionerIdFromRequest } from '@/lib/practitioners'
+import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
 import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrationsRepository'
 
 export async function POST(req: NextRequest) {
-  const practitionerId = getPractitionerIdFromRequest(req)
+  const practitionerId = await getPractitionerIdFromRequest(req)
   const integration = googleIntegrationsRepository.getIntegration(practitionerId)
 
   if (!integration.connected || !integration.selectedCalendarId) {

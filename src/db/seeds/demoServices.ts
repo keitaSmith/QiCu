@@ -5,6 +5,7 @@ import { demoPractitionerIds, demoServiceIds } from './ids'
 export const demoServices = [
   {
     id: demoServiceIds['tom-acu-60'],
+    publicId: 'tom-acu-60',
     practitionerId: demoPractitionerIds['prac-tom-cook'],
     name: 'Acupuncture',
     durationMinutes: 60,
@@ -13,6 +14,7 @@ export const demoServices = [
   },
   {
     id: demoServiceIds['tom-acu-45'],
+    publicId: 'tom-acu-45',
     practitionerId: demoPractitionerIds['prac-tom-cook'],
     name: 'Acupuncture',
     durationMinutes: 45,
@@ -21,6 +23,7 @@ export const demoServices = [
   },
   {
     id: demoServiceIds['tom-acu-30'],
+    publicId: 'tom-acu-30',
     practitionerId: demoPractitionerIds['prac-tom-cook'],
     name: 'Acupuncture',
     durationMinutes: 30,
@@ -29,6 +32,7 @@ export const demoServices = [
   },
   {
     id: demoServiceIds['tom-massage-60'],
+    publicId: 'tom-massage-60',
     practitionerId: demoPractitionerIds['prac-tom-cook'],
     name: 'Massage',
     durationMinutes: 60,
@@ -37,6 +41,7 @@ export const demoServices = [
   },
   {
     id: demoServiceIds['keita-acu-60'],
+    publicId: 'keita-acu-60',
     practitionerId: demoPractitionerIds['prac-keita-smith'],
     name: 'Acupuncture',
     durationMinutes: 60,
@@ -45,6 +50,7 @@ export const demoServices = [
   },
   {
     id: demoServiceIds['keita-acu-45'],
+    publicId: 'keita-acu-45',
     practitionerId: demoPractitionerIds['prac-keita-smith'],
     name: 'Acupuncture',
     durationMinutes: 45,
@@ -53,6 +59,7 @@ export const demoServices = [
   },
   {
     id: demoServiceIds['keita-cupping-30'],
+    publicId: 'keita-cupping-30',
     practitionerId: demoPractitionerIds['prac-keita-smith'],
     name: 'Cupping',
     durationMinutes: 30,
@@ -61,6 +68,7 @@ export const demoServices = [
   },
   {
     id: demoServiceIds['keita-moxa-45'],
+    publicId: 'keita-moxa-45',
     practitionerId: demoPractitionerIds['prac-keita-smith'],
     name: 'Moxa',
     durationMinutes: 45,
@@ -69,4 +77,3 @@ export const demoServices = [
     archivedAt: new Date('2026-05-01T00:00:00.000Z'),
   },
 ] satisfies Array<typeof services.$inferInsert>
-
