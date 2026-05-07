@@ -226,3 +226,11 @@ Phase E.3 session runtime tests:
 ## Recommended next task
 
 Implement Phase E.1 as a schema/seed compatibility step only: add `bookings.public_id` and `sessions.public_id`, deterministic backfill migrations, seed updates, and public ID mapping tests. Do not move bookings or sessions runtime persistence in that task.
+
+## Implementation note: Phase E.1
+
+Phase E.1 added `bookings.public_id` and `sessions.public_id` as database compatibility columns for the existing public runtime IDs. Deterministic migration backfills were added for seeded booking IDs such as `b-tom-today-001`, `b-tom-live-003`, and `b-keita-past-201`, and seeded session IDs such as `S-T-1001` and `S-K-2001`.
+
+Seed rows now include `publicId` for bookings and sessions. The database still keeps UUID primary keys internal, `bookings.session_id` was not added, and `sessions.booking_id` remains the canonical linked-session relationship.
+
+Runtime bookings and sessions remain in-memory after this phase. Phase E.2 can move `bookingsRepository` internals to Drizzle next, using public ID mapping and transition mirroring while keeping sessions, lifecycle/Trash, and Google integration behavior stable.

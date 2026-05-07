@@ -181,6 +181,7 @@ function buildTimestamp(dayOffset: number, time: string, options: DemoBookingSee
 export function buildDemoBookingsSeed(options: DemoBookingSeedOptions = {}) {
   return demoBookingSources.map(source => ({
     id: demoBookingIds[source.currentId],
+    publicId: source.currentId,
     code: source.code,
     practitionerId: demoPractitionerIds[source.practitionerCurrentId],
     patientId: demoPatientIds[source.patientCurrentId],

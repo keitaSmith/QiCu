@@ -31,6 +31,6 @@ No reset or truncate behavior is included. Do not add destructive reset behavior
 - Keep test fixtures separate from development seeds.
 - Keep runtime demo string IDs unchanged in the in-memory stores.
 - Use deterministic UUIDs from `ids.ts` for database seed rows.
+- Keep booking and session `publicId` values aligned with current runtime IDs.
 - `sessions.booking_id` is canonical for linked sessions.
 - `bookings.session_id` is not seeded and should not exist in database seed rows.
-

@@ -435,3 +435,9 @@ The Phase E.0 readiness audit confirmed that bookings and sessions should not mo
 The current schema already has the core relational shape for Phase E: bookings store patient/service foreign keys, service snapshots, status, Google sync fields, lifecycle metadata, and availability indexes; sessions use nullable `sessions.booking_id` as the canonical booking relationship; and there is no physical `bookings.session_id` column. Future booking API responses may still compute a transitional `booking.sessionId` while the UI and task workflows depend on it.
 
 Recommended Phase E order is: add booking/session public ID columns and seed backfills first, migrate bookingsRepository with in-memory mirroring second, then migrate sessionsRepository using `sessions.booking_id` as canonical. Lifecycle/Trash and Google should remain in-memory until later phases.
+
+## Implementation note: Phase E.1 booking/session public ID compatibility
+
+Phase E.1 added `bookings.public_id` and `sessions.public_id` to the Drizzle schema, plus deterministic seed values and migration backfills for the existing public booking/session IDs. These columns prepare future Drizzle-backed booking and session repositories to keep current API/UI IDs stable while database UUID primary keys remain internal.
+
+No booking or session runtime repository was moved to Drizzle in this phase. `bookings.session_id` was not added, and `sessions.booking_id` remains the canonical database relationship for linked sessions.

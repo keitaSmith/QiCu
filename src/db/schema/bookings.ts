@@ -10,6 +10,7 @@ export const bookings = pgTable(
   'bookings',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    publicId: text('public_id'),
     code: text('code').notNull(),
     practitionerId: uuid('practitioner_id')
       .notNull()
@@ -43,6 +44,7 @@ export const bookings = pgTable(
     deletionReason: text('deletion_reason'),
   },
   table => [
+    uniqueIndex('bookings_practitioner_public_id_unique').on(table.practitionerId, table.publicId),
     uniqueIndex('bookings_practitioner_code_unique').on(table.practitionerId, table.code),
     index('bookings_practitioner_time_idx').on(table.practitionerId, table.startAt, table.endAt),
     index('bookings_practitioner_status_deleted_idx').on(

@@ -26,6 +26,7 @@ export function buildDemoSessionsSeed(options: DemoSessionSeedOptions = {}) {
   return [
     {
       id: demoSessionIds['S-T-1001'],
+      publicId: 'S-T-1001',
       practitionerId: demoPractitionerIds['prac-tom-cook'],
       patientId: demoPatientIds['P-T-1002'],
       bookingId: demoBookingIds['b-tom-past-201'],
@@ -40,6 +41,7 @@ export function buildDemoSessionsSeed(options: DemoSessionSeedOptions = {}) {
     },
     {
       id: demoSessionIds['S-K-2001'],
+      publicId: 'S-K-2001',
       practitionerId: demoPractitionerIds['prac-keita-smith'],
       patientId: demoPatientIds['P-K-2001'],
       bookingId: null,
@@ -56,4 +58,3 @@ export function buildDemoSessionsSeed(options: DemoSessionSeedOptions = {}) {
 }
 
 export const demoSessions = buildDemoSessionsSeed()
-
