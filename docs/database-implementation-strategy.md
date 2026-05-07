@@ -427,3 +427,11 @@ The Phase D completion audit confirmed that practitioners, services, and patient
 Bookings, sessions, lifecycle, Trash, and Google integration remain backed by existing in-memory stores/helpers. Service and patient repository reads/writes continue to mirror into the in-memory stores for transition safety, and patient lifecycle operations keep narrow archive/delete/restore sync points until lifecycle and Trash move fully to Drizzle.
 
 API routes still do not import Drizzle directly, and route response shapes remain repository-owned rather than database-row-shaped. Phase E can begin after a manual browser smoke check of Patients, Services, Bookings, Sessions, Trash restore, Export, and Google import/reconcile flows.
+
+## Implementation note: Phase E.0 booking/session readiness audit
+
+The Phase E.0 readiness audit confirmed that bookings and sessions should not move directly to Drizzle runtime persistence until public ID compatibility is added. Current booking and session IDs are exposed through routes, UI state, Google sync metadata, lifecycle/Trash helpers, task prompts, and patient export, so `bookings.public_id` and `sessions.public_id` should be added and backfilled before repository internals move.
+
+The current schema already has the core relational shape for Phase E: bookings store patient/service foreign keys, service snapshots, status, Google sync fields, lifecycle metadata, and availability indexes; sessions use nullable `sessions.booking_id` as the canonical booking relationship; and there is no physical `bookings.session_id` column. Future booking API responses may still compute a transitional `booking.sessionId` while the UI and task workflows depend on it.
+
+Recommended Phase E order is: add booking/session public ID columns and seed backfills first, migrate bookingsRepository with in-memory mirroring second, then migrate sessionsRepository using `sessions.booking_id` as canonical. Lifecycle/Trash and Google should remain in-memory until later phases.
