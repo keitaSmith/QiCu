@@ -32,7 +32,7 @@ function generateBookingCode(practitionerId: string) {
 
 export async function GET(req: NextRequest) {
   const practitionerId = await getPractitionerIdFromRequest(req)
-  return NextResponse.json(bookingsRepository.listByPractitioner(practitionerId), { status: 200 })
+  return NextResponse.json(await bookingsRepository.listByPractitioner(practitionerId), { status: 200 })
 }
 
 export async function POST(req: NextRequest) {
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'end must be after start' }, { status: 400 })
   }
 
-  const result = bookingsRepository.createWithOverlapCheck(practitionerId, {
+  const result = await bookingsRepository.createWithOverlapCheck(practitionerId, {
     code: generateBookingCode(practitionerId),
     patientId,
     serviceId: service.id,
@@ -113,6 +113,7 @@ export async function POST(req: NextRequest) {
   await syncGoogleOnBookingCreate(created, req, {
     skip: body.skipGoogleWriteback === true || Boolean(body.externalEventId),
   })
+  await bookingsRepository.syncRuntimeBookingToDatabase(practitionerId, created.id, created)
 
   return NextResponse.json(created, { status: 201 })
 }

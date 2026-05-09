@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
       integration.selectedCalendarId,
       await patientsRepository.listGoogleImportCandidates(practitionerId),
       await servicesRepository.listGoogleImportCandidates(practitionerId),
-      bookingsRepository.listGoogleImportPreviewBookings(practitionerId),
+      await bookingsRepository.listGoogleImportPreviewBookings(practitionerId),
       importMode,
     )
 

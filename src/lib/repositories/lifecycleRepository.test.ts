@@ -174,7 +174,7 @@ test('individual booking and session Trash behavior preserves runtime links', as
   const booking = addBooking({ id: 'b-repo-life-booking-delete', sessionId: 'S-REPO-LIFE-linked' })
   const session = addSession({ id: 'S-REPO-LIFE-linked', bookingId: booking.id })
 
-  const deletedBooking = moveBookingToTrash(practitionerId, booking.id)
+  const deletedBooking = await moveBookingToTrash(practitionerId, booking.id)
   assert.equal(isTrashed(booking), true)
   assert.equal(session.bookingId, null)
 

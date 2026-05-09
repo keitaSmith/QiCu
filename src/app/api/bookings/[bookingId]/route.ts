@@ -23,7 +23,7 @@ export async function PATCH(
   const practitionerId = await getPractitionerIdFromRequest(req)
   const { bookingId } = await context.params
 
-  const booking = bookingsRepository.getById(practitionerId, bookingId)
+  const booking = await bookingsRepository.getById(practitionerId, bookingId)
 
   if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
@@ -84,7 +84,7 @@ export async function PATCH(
     }
   }
 
-  const result = bookingsRepository.updateWithOverlapCheck(practitionerId, bookingId, {
+  const result = await bookingsRepository.updateWithOverlapCheck(practitionerId, bookingId, {
     start: body.start,
     end: body.end,
     resource: body.resource,
@@ -113,6 +113,7 @@ export async function PATCH(
   await syncGoogleOnBookingUpdate(updatedBooking, req, {
     skip: body.skipGoogleWriteback === true,
   })
+  await bookingsRepository.syncRuntimeBookingToDatabase(practitionerId, updatedBooking.id, updatedBooking)
 
   return NextResponse.json(updatedBooking, { status: 200 })
 }
@@ -124,15 +125,16 @@ export async function DELETE(
   const practitionerId = await getPractitionerIdFromRequest(req)
   const { bookingId } = await context.params
 
-  const booking = bookingsRepository.getById(practitionerId, bookingId)
+  const booking = await bookingsRepository.getById(practitionerId, bookingId)
 
   if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
   await syncGoogleOnBookingDelete(booking, req)
+  await bookingsRepository.syncRuntimeBookingToDatabase(practitionerId, booking.id, booking)
 
-  const result = lifecycleRepository.moveBookingToTrash(practitionerId, bookingId)
+  const result = await lifecycleRepository.moveBookingToTrash(practitionerId, bookingId)
 
   return NextResponse.json(
     {

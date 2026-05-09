@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Connect Google Calendar and choose a calendar first.' }, { status: 400 })
   }
 
-  const linkedBookings = bookingsRepository.listGoogleLinkedBookingsForReconcile(practitionerId)
+  const linkedBookings = await bookingsRepository.listGoogleLinkedBookingsForReconcile(practitionerId)
 
   let updated = 0
   let cancelled = 0
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     const event = await getGoogleCalendarEvent(practitionerId, req, calendarId, eventId)
 
-    const result = bookingsRepository.reconcileGoogleLinkedBooking(
+    const result = await bookingsRepository.reconcileGoogleLinkedBooking(
       practitionerId,
       booking.id,
       event,

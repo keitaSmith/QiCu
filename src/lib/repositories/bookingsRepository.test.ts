@@ -58,7 +58,7 @@ function booking(input: Partial<Booking> = {}): Booking {
 
 afterEach(cleanup)
 
-test('listByPractitioner and listByPatient respect practitioner scope', () => {
+test('listByPractitioner and listByPatient respect practitioner scope', async () => {
   cleanup()
   const scoped = booking({ id: 'b-repo-scoped', patientId: 'P-A' })
   const samePatientOtherScope = booking({
@@ -68,22 +68,22 @@ test('listByPractitioner and listByPatient respect practitioner scope', () => {
   })
   BOOKINGS.push(scoped, samePatientOtherScope)
 
-  assert.deepEqual(listByPractitioner(practitionerId).map(item => item.id), [scoped.id])
-  assert.deepEqual(listByPatient(practitionerId, 'P-A').map(item => item.id), [scoped.id])
+  assert.deepEqual((await listByPractitioner(practitionerId)).map(item => item.id), [scoped.id])
+  assert.deepEqual((await listByPatient(practitionerId, 'P-A')).map(item => item.id), [scoped.id])
 })
 
-test('getById respects practitioner scope and trash state', () => {
+test('getById respects practitioner scope and trash state', async () => {
   cleanup()
   const scoped = booking({ id: 'b-repo-get' })
   const trashed = booking({ id: 'b-repo-trashed', trashMetadata: trashMetadata() })
   BOOKINGS.push(scoped, trashed)
 
-  assert.equal(getById(practitionerId, scoped.id)?.id, scoped.id)
-  assert.equal(getById(otherPractitionerId, scoped.id), null)
-  assert.equal(getById(practitionerId, trashed.id), null)
+  assert.equal((await getById(practitionerId, scoped.id))?.id, scoped.id)
+  assert.equal(await getById(otherPractitionerId, scoped.id), null)
+  assert.equal(await getById(practitionerId, trashed.id), null)
 })
 
-test('confirmed and pending bookings block availability while other states do not', () => {
+test('confirmed and pending bookings block availability while other states do not', async () => {
   cleanup()
   for (const status of ['confirmed', 'pending', 'cancelled', 'no-show', 'completed'] as const) {
     BOOKINGS.push(booking({ id: `b-repo-${status}`, status }))
@@ -91,16 +91,16 @@ test('confirmed and pending bookings block availability while other states do no
   BOOKINGS.push(booking({ id: 'b-repo-trash-block', status: 'confirmed', trashMetadata: trashMetadata() }))
 
   assert.deepEqual(
-    findAvailabilityBlockingBookings(practitionerId).map(item => item.id).sort(),
+    (await findAvailabilityBlockingBookings(practitionerId)).map(item => item.id).sort(),
     ['b-repo-confirmed', 'b-repo-pending'],
   )
 })
 
-test('create and update preserve overlap behavior', () => {
+test('create and update preserve overlap behavior', async () => {
   cleanup()
   BOOKINGS.push(booking({ id: 'b-repo-existing' }))
 
-  const overlappingCreate = createWithOverlapCheck(practitionerId, {
+  const overlappingCreate = await createWithOverlapCheck(practitionerId, {
     code: 'BKG-OVERLAP',
     patientId: 'P-REPO-BOOKING',
     serviceId: 'svc-repo-booking',
@@ -111,7 +111,7 @@ test('create and update preserve overlap behavior', () => {
   })
   assert.equal('error' in overlappingCreate && overlappingCreate.error, 'overlap')
 
-  const created = createWithOverlapCheck(practitionerId, {
+  const created = await createWithOverlapCheck(practitionerId, {
     id: 'b-repo-created',
     code: 'BKG-CREATED',
     patientId: 'P-REPO-BOOKING',
@@ -126,24 +126,24 @@ test('create and update preserve overlap behavior', () => {
   }
   assert.equal(created.booking.id, 'b-repo-created')
 
-  const overlappingUpdate = updateWithOverlapCheck(practitionerId, 'b-repo-created', {
+  const overlappingUpdate = await updateWithOverlapCheck(practitionerId, 'b-repo-created', {
     start: '2026-05-10T10:15:00.000Z',
     end: '2026-05-10T11:00:00.000Z',
   })
   assert.equal('error' in overlappingUpdate && overlappingUpdate.error, 'overlap')
 })
 
-test('cancelled booking reschedule is rejected unless reactivated', () => {
+test('cancelled booking reschedule is rejected unless reactivated', async () => {
   cleanup()
   BOOKINGS.push(booking({ id: 'b-repo-cancelled', status: 'cancelled' }))
 
-  const rejected = updateWithOverlapCheck(practitionerId, 'b-repo-cancelled', {
+  const rejected = await updateWithOverlapCheck(practitionerId, 'b-repo-cancelled', {
     start: '2026-05-10T11:00:00.000Z',
     end: '2026-05-10T11:45:00.000Z',
   })
   assert.equal('error' in rejected && rejected.error, 'cancelled-reschedule')
 
-  const updated = updateWithOverlapCheck(practitionerId, 'b-repo-cancelled', {
+  const updated = await updateWithOverlapCheck(practitionerId, 'b-repo-cancelled', {
     start: '2026-05-10T11:00:00.000Z',
     end: '2026-05-10T11:45:00.000Z',
     status: 'confirmed',
@@ -154,7 +154,7 @@ test('cancelled booking reschedule is rejected unless reactivated', () => {
   assert.equal(updated.booking.status, 'confirmed')
 })
 
-test('Google import preview and reconcile helpers preserve scoped in-memory behavior', () => {
+test('Google import preview and reconcile helpers preserve scoped in-memory behavior', async () => {
   cleanup()
   const linked = booking({
     id: 'b-repo-google-linked',
@@ -179,15 +179,15 @@ test('Google import preview and reconcile helpers preserve scoped in-memory beha
   BOOKINGS.push(linked, trashed, other)
 
   assert.deepEqual(
-    listGoogleImportPreviewBookings(practitionerId).map(item => item.id).sort(),
+    (await listGoogleImportPreviewBookings(practitionerId)).map(item => item.id).sort(),
     [linked.id, trashed.id].sort(),
   )
   assert.deepEqual(
-    listGoogleLinkedBookingsForReconcile(practitionerId).map(item => item.id).sort(),
+    (await listGoogleLinkedBookingsForReconcile(practitionerId)).map(item => item.id).sort(),
     [linked.id, trashed.id].sort(),
   )
 
-  const result = reconcileGoogleLinkedBooking(
+  const result = await reconcileGoogleLinkedBooking(
     practitionerId,
     linked.id,
     {
@@ -204,4 +204,27 @@ test('Google import preview and reconcile helpers preserve scoped in-memory beha
   assert.equal(linked.resource, 'Room 2')
   assert.equal(linked.externalSyncStatus, 'synced')
   assert.equal(linked.externalLastSyncedAt, '2026-05-06T12:00:00.000Z')
+})
+
+test('demo bookings keep public IDs and do not duplicate transition mirror rows', async () => {
+  const practitionerId = 'prac-tom-cook'
+  const bookingId = 'b-tom-today-001'
+  const beforeCount = BOOKINGS.filter(
+    booking => booking.id === bookingId && booking.practitionerId === practitionerId,
+  ).length
+
+  const firstRead = await listByPractitioner(practitionerId)
+  const secondRead = await listByPractitioner(practitionerId)
+  const booking = firstRead.find(item => item.id === bookingId)
+
+  assert.ok(booking)
+  assert.equal(booking.id, bookingId)
+  assert.equal(booking.patientId, 'P-T-1001')
+  assert.equal(booking.serviceId, 'tom-acu-60')
+  assert.equal(/^[0-9a-f-]{36}$/i.test(booking.id), false)
+  assert.equal(secondRead.some(item => item.id === bookingId), true)
+  assert.equal(
+    BOOKINGS.filter(item => item.id === bookingId && item.practitionerId === practitionerId).length,
+    beforeCount || 1,
+  )
 })

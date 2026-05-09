@@ -441,3 +441,13 @@ Recommended Phase E order is: add booking/session public ID columns and seed bac
 Phase E.1 added `bookings.public_id` and `sessions.public_id` to the Drizzle schema, plus deterministic seed values and migration backfills for the existing public booking/session IDs. These columns prepare future Drizzle-backed booking and session repositories to keep current API/UI IDs stable while database UUID primary keys remain internal.
 
 No booking or session runtime repository was moved to Drizzle in this phase. `bookings.session_id` was not added, and `sessions.booking_id` remains the canonical database relationship for linked sessions.
+
+## Implementation note: Phase E.2 bookings Drizzle runtime foundation
+
+Phase E.2 moved `src/lib/repositories/bookingsRepository.ts` to Drizzle-backed runtime persistence when PostgreSQL is available. Practitioners, services, patients, and bookings are now the Drizzle-backed runtime layer; sessions, lifecycle, Trash, and Google integration still use existing in-memory stores/helpers.
+
+Bookings keep their existing public IDs such as `b-tom-today-001`, `b-tom-live-003`, and newly generated public IDs from booking creation. The database UUID primary key remains internal, and repository mapping preserves public practitioner, patient, and service IDs in current booking response shapes.
+
+During the transition, DB-backed booking reads/writes mirror into the existing `BOOKINGS` store. Lifecycle operations sync booking Trash state back to the database, Google sync/reconcile can persist external status fields, patient export can still combine booking data with in-memory sessions, and booking responses can still compute transitional `sessionId` from in-memory sessions. `bookings.session_id` was not added; `sessions.booking_id` remains canonical for Phase E.3.
+
+API routes still do not import Drizzle directly. Local DB-backed booking runtime requires the local database to be migrated and seeded first.

@@ -43,7 +43,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 
   if (bookingId) {
-    const booking = bookingsRepository.getById(practitionerId, bookingId)
+    const booking = await bookingsRepository.getById(practitionerId, bookingId)
     if (!booking) {
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
     }
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   const now = new Date()
   const booking = bookingId
-    ? bookingsRepository.getById(practitionerId, bookingId)
+    ? await bookingsRepository.getById(practitionerId, bookingId)
     : undefined
   const resolvedService = service ?? (booking?.serviceId ? await servicesRepository.getById(practitionerId, booking.serviceId) : null)
 

@@ -64,7 +64,7 @@ export async function POST(
   const id = crypto.randomUUID()
   const code = `BKG-${practitionerId === 'prac-keita-smith' ? 'KEI' : 'TOM'}-${id.slice(0, 4).toUpperCase()}`
 
-  const result = bookingsRepository.createWithOverlapCheck(practitionerId, {
+  const result = await bookingsRepository.createWithOverlapCheck(practitionerId, {
     id,
     code,
     patientId,

@@ -22,13 +22,13 @@ const updateSessionSchema = z.object({
   bookingId: z.string().nullable().optional(),
 })
 
-function ensureBookingCanLink(
+async function ensureBookingCanLink(
   sessionId: string,
   patientId: string,
   bookingId: string,
   practitionerId: string,
 ) {
-  const booking = bookingsRepository.getById(practitionerId, bookingId)
+  const booking = await bookingsRepository.getById(practitionerId, bookingId)
 
   if (!booking) return { error: 'Booking not found', status: 404 as const }
   if (booking.patientId !== patientId) {
@@ -73,7 +73,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     sessionsRepository.unlinkBookingBySessionId(practitionerId, sessionId)
 
     if (nextBookingId) {
-      const result = ensureBookingCanLink(sessionId, current.patientId, nextBookingId, practitionerId)
+      const result = await ensureBookingCanLink(sessionId, current.patientId, nextBookingId, practitionerId)
       if ('error' in result) {
         return NextResponse.json({ error: result.error }, { status: result.status })
       }

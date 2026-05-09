@@ -234,3 +234,11 @@ Phase E.1 added `bookings.public_id` and `sessions.public_id` as database compat
 Seed rows now include `publicId` for bookings and sessions. The database still keeps UUID primary keys internal, `bookings.session_id` was not added, and `sessions.booking_id` remains the canonical linked-session relationship.
 
 Runtime bookings and sessions remain in-memory after this phase. Phase E.2 can move `bookingsRepository` internals to Drizzle next, using public ID mapping and transition mirroring while keeping sessions, lifecycle/Trash, and Google integration behavior stable.
+
+## Implementation note: Phase E.2
+
+Phase E.2 moved `bookingsRepository` to Drizzle-backed runtime persistence when PostgreSQL is available. The repository now uses `bookings.public_id` as the current app/API booking ID and keeps database UUID primary keys internal. It maps public practitioner, patient, service, and booking IDs to database UUIDs internally, then returns bookings with the existing public response shape.
+
+Sessions remain in-memory. Booking responses still compute the transitional `sessionId` from the in-memory session relationship when needed, while `bookings.session_id` remains absent from the database and `sessions.booking_id` remains the canonical relationship for the later session migration.
+
+Lifecycle/Trash and Google integration remain in-memory during this phase. DB-backed booking reads and writes mirror into the existing `BOOKINGS` store so patient export, booking delete/restore, patient grouped Trash behavior, Google import/reconcile, Google sync fallback updates, and task/session-note workflows continue to see public booking IDs. Phase E.3 can move `sessionsRepository` next after manual browser testing of bookings, sessions, Trash, export, and Google flows.
