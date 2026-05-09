@@ -181,7 +181,7 @@ test('individual booking and session Trash behavior preserves runtime links', as
   await restoreDeletionGroup(practitionerId, deletedBooking.deletionGroupId)
   assert.equal(isTrashed(booking), false)
 
-  const deletedSession = moveSessionToTrash(practitionerId, session.id)
+  const deletedSession = await moveSessionToTrash(practitionerId, session.id)
   assert.equal(isTrashed(session), true)
   assert.equal(booking.sessionId, undefined)
 

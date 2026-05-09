@@ -250,3 +250,13 @@ Bookings are Drizzle-backed after Phase E.2, but lifecycle/Trash recovery is sti
 Trash grouping and recovery state are not fully restart-persistent yet. After an app restart, a deleted booking should remain excluded from normal active booking lists because `bookings.deleted_at` is persisted, but the Trash/recovery view may not reconstruct the original recovery group because `deletion_groups` and grouped Trash metadata are not yet managed transactionally by the lifecycle repository. That gap is expected until Phase F.
 
 Phase F must move lifecycle/Trash operations to database-backed transactions that persist `deletion_groups`, child record Trash metadata, restore windows, restore operations, and purge behavior together. Re-test booking delete, individual restore, grouped patient delete/restore, Trash filters, and restart recovery once Phase F lands.
+
+## Implementation note: Phase E.3
+
+Phase E.3 moved `sessionsRepository` to Drizzle-backed runtime persistence when PostgreSQL is available. The repository uses `sessions.public_id` as the current app/API session ID, keeps database UUID primary keys internal, and maps public practitioner, patient, service, booking, and session IDs at the repository boundary.
+
+Linked sessions now persist the booking database UUID in `sessions.booking_id`, which remains the canonical database relationship. Walk-in/no-booking sessions continue to use a nullable booking relationship. `bookings.session_id` was not added. Booking responses can still expose the transitional `sessionId` expected by current UI/task flows by deriving it from linked sessions and returning public session IDs.
+
+Lifecycle/Trash remains in-memory during this phase. DB-backed session reads and writes mirror into `sessionsStore`, and lifecycle operations sync affected session Trash/link state back to the sessions table where possible during the running app session. The Phase E.2 restart-persistence limitation still applies: grouped Trash recovery state is not fully restart-persistent until Phase F moves lifecycle/Trash to database-backed transactions.
+
+Google integration remains in-memory. Phase F can move lifecycle and Trash next after manual browser testing of sessions, booking-linked note workflows, patient export, individual session restore, grouped patient restore, and booking/session pages.

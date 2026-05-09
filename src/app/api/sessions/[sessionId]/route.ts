@@ -47,7 +47,7 @@ async function ensureBookingCanLink(
 export async function GET(req: NextRequest, { params }: RouteParams) {
   const practitionerId = await getPractitionerIdFromRequest(req)
   const { sessionId } = await params
-  const session = sessionsRepository.getById(practitionerId, sessionId)
+  const session = await sessionsRepository.getById(practitionerId, sessionId)
 
   if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(session)
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const practitionerId = await getPractitionerIdFromRequest(req)
   const { sessionId } = await params
-  const current = sessionsRepository.getById(practitionerId, sessionId)
+  const current = await sessionsRepository.getById(practitionerId, sessionId)
   if (!current) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
@@ -70,7 +70,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const nextBookingId = parsed.data.bookingId
 
   if (nextBookingId !== undefined) {
-    sessionsRepository.unlinkBookingBySessionId(practitionerId, sessionId)
+    await sessionsRepository.unlinkBookingBySessionId(practitionerId, sessionId)
 
     if (nextBookingId) {
       const result = await ensureBookingCanLink(sessionId, current.patientId, nextBookingId, practitionerId)
@@ -90,7 +90,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     nextServiceName = service.name
   }
 
-  const updated = sessionsRepository.update(practitionerId, sessionId, {
+  const updated = await sessionsRepository.update(practitionerId, sessionId, {
     ...parsed.data,
     serviceName: nextServiceName,
   })
@@ -101,12 +101,12 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   const practitionerId = await getPractitionerIdFromRequest(req)
   const { sessionId } = await params
-  const session = sessionsRepository.getById(practitionerId, sessionId)
+  const session = await sessionsRepository.getById(practitionerId, sessionId)
   if (!session) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 
-  const result = lifecycleRepository.moveSessionToTrash(practitionerId, sessionId)
+  const result = await lifecycleRepository.moveSessionToTrash(practitionerId, sessionId)
 
   return NextResponse.json(
     {

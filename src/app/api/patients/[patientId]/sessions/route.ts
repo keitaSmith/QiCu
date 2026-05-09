@@ -13,7 +13,7 @@ type RouteParams = {
 export async function GET(req: NextRequest, { params }: RouteParams) {
   const practitionerId = await getPractitionerIdFromRequest(req)
   const { patientId } = await params
-  const sessions = sessionsRepository.listByPatient(practitionerId, patientId)
+  const sessions = await sessionsRepository.listByPatient(practitionerId, patientId)
   return NextResponse.json(sessions)
 }
 
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     : undefined
   const resolvedService = service ?? (booking?.serviceId ? await servicesRepository.getById(practitionerId, booking.serviceId) : null)
 
-  const newSession = sessionsRepository.create(practitionerId, {
+  const newSession = await sessionsRepository.create(practitionerId, {
     patientId,
     startDateTime: body.startDateTime ?? now.toISOString(),
     serviceId: resolvedService?.id,

@@ -457,3 +457,13 @@ API routes still do not import Drizzle directly. Local DB-backed booking runtime
 Restart-persistent Trash recovery is intentionally deferred. Phase E.2 persists booking deleted state well enough that deleted bookings should not reappear in normal active booking lists, but lifecycle/Trash grouping still comes from in-memory helpers and is not expected to fully survive an app restart.
 
 Do not treat missing Trash records after restart as a Phase E.2 blocker unless deleted records reappear in active/default views. Phase F should migrate lifecycle and Trash helpers to database-backed transactions so `deletion_groups`, Trash metadata, restore windows, restore, and purge behavior are persisted together.
+
+## Implementation note: Phase E.3 sessions Drizzle runtime foundation
+
+Phase E.3 moved `src/lib/repositories/sessionsRepository.ts` to Drizzle-backed runtime persistence when PostgreSQL is available. Practitioners, services, patients, bookings, and sessions are now Drizzle-backed at the repository layer; lifecycle, Trash, and Google integration still use existing in-memory helpers/stores.
+
+Sessions keep their existing public IDs such as `S-T-1001` and `S-K-2001` through `sessions.public_id`. Database UUID primary keys remain internal, while the repository maps public practitioner, patient, service, booking, and session IDs to database rows and returns current API-compatible session shapes.
+
+Linked sessions use nullable `sessions.booking_id` as the canonical database relationship. `bookings.session_id` was not added. During the transition, booking responses can still expose a computed/transitional `sessionId` using public session IDs so existing booking detail, task, and note workflows remain stable.
+
+DB-backed session reads and writes mirror into `sessionsStore`, and lifecycle operations narrowly sync session Trash/link changes back to the sessions table during the running app session. Restart-persistent grouped Trash recovery remains deferred to Phase F. API routes still do not import Drizzle directly, and local DB-backed session runtime requires the local database to be migrated and seeded first.

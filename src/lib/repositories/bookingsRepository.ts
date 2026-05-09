@@ -3,12 +3,13 @@ import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 import { BOOKINGS } from '@/data/bookings'
 import { sessionsStore } from '@/data/sessionsStore'
 import { drizzleDb } from '@/db/client'
-import { bookings, patients, services } from '@/db/schema'
+import { bookings, patients, services, sessions as sessionsTable } from '@/db/schema'
 import {
   demoBookingIds,
   demoPatientIds,
   demoPractitionerIds,
   demoServiceIds,
+  demoSessionIds,
 } from '@/db/seeds/ids'
 import { applyBookingStatus } from '@/lib/bookingStatus'
 import { hasBookingOverlap, isBookingAvailabilityBlocking } from '@/lib/bookingValidation'
@@ -54,6 +55,7 @@ type BookingRow = typeof bookings.$inferSelect
 type BookingMaps = {
   patientPublicIds: Map<string, string>
   servicePublicIds: Map<string, string>
+  sessionPublicIdsByBookingId: Map<string, string>
 }
 
 const publicPractitionerIdToDatabaseId = demoPractitionerIds
@@ -65,6 +67,7 @@ const databasePractitionerIdToPublicId = reverse(publicPractitionerIdToDatabaseI
 const databaseBookingIdToPublicId = reverse(publicBookingIdToDatabaseId)
 const databasePatientIdToPublicId = reverse(publicPatientIdToDatabaseId)
 const databaseServiceIdToPublicId = reverse(publicServiceIdToDatabaseId)
+const databaseSessionIdToPublicId = reverse(demoSessionIds)
 
 function reverse<T extends Record<string, string>>(value: T) {
   return Object.fromEntries(Object.entries(value).map(([publicId, databaseId]) => [databaseId, publicId])) as Record<
@@ -172,7 +175,7 @@ function toPublicBooking(row: BookingRow, maps: BookingMaps): Booking {
     externalEventId: row.externalEventId ?? null,
     externalSyncStatus: (row.externalSyncStatus as Booking['externalSyncStatus']) ?? null,
     externalLastSyncedAt: isoOrUndefined(row.externalLastSyncedAt),
-    sessionId: publicSessionIdForBooking(practitionerId, publicId),
+    sessionId: maps.sessionPublicIdsByBookingId.get(row.id) ?? publicSessionIdForBooking(practitionerId, publicId),
     trashMetadata: trashMetadataForRow(row, practitionerId),
   }
 }
@@ -223,6 +226,7 @@ async function loadPublicIdMaps(rows: BookingRow[]): Promise<BookingMaps> {
   const serviceIds = [...new Set(rows.map(row => row.serviceId).filter((id): id is string => Boolean(id)))]
   const patientPublicIds = new Map<string, string>()
   const servicePublicIds = new Map<string, string>()
+  const sessionPublicIdsByBookingId = new Map<string, string>()
 
   if (patientIds.length > 0) {
     const patientRows = await drizzleDb
@@ -246,7 +250,27 @@ async function loadPublicIdMaps(rows: BookingRow[]): Promise<BookingMaps> {
     }
   }
 
-  return { patientPublicIds, servicePublicIds }
+  const bookingIds = rows.map(row => row.id)
+  if (bookingIds.length > 0) {
+    const sessionRows = await drizzleDb
+      .select({
+        id: sessionsTable.id,
+        publicId: sessionsTable.publicId,
+        bookingId: sessionsTable.bookingId,
+      })
+      .from(sessionsTable)
+      .where(and(inArray(sessionsTable.bookingId, bookingIds), isNull(sessionsTable.deletedAt)))
+
+    for (const session of sessionRows) {
+      if (!session.bookingId || sessionPublicIdsByBookingId.has(session.bookingId)) continue
+      sessionPublicIdsByBookingId.set(
+        session.bookingId,
+        session.publicId ?? databaseSessionIdToPublicId[session.id] ?? session.id,
+      )
+    }
+  }
+
+  return { patientPublicIds, servicePublicIds, sessionPublicIdsByBookingId }
 }
 
 async function mapRows(rows: BookingRow[]) {
