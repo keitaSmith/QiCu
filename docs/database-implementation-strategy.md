@@ -485,3 +485,11 @@ Phase F.0 audited the remaining lifecycle and Trash transition boundary before m
 The current schema already includes the main lifecycle persistence building blocks: `deletion_groups`, lifecycle metadata columns on patients/services/bookings/sessions, restore-window checks, deletion-type checks, and `audit_events`. Phase F.1 should review whether additional child-table indexes on `deletion_group_id` and `restore_until` are needed for Trash grouping and purge efficiency, but no broad product-field migration is required before starting.
 
 Recommended Phase F order is: build the DB-backed deletion group/Trash read model first, then migrate patient archive/reactivate and grouped Delete Patient Data transactions, then individual booking/session/service Trash transactions, then DB-backed purge, then lifecycle-aware patient export. Grouped Trash restart persistence remains the core Phase F goal, and API routes should continue to call repositories rather than importing Drizzle directly.
+
+## Implementation note: Phase F.1 DB-backed Trash read model
+
+Phase F.1 moved the Trash recovery read model in `trashRepository` to Drizzle/PostgreSQL when the database is available. The `/api/trash` route still returns the same raw Trash payload shape, while the repository maps persisted patient, booking, session, and service Trash metadata back to public IDs and current UI-compatible objects.
+
+The DB read model is anchored on `deletion_groups`, preserves patient-data grouping semantics, suppresses grouped child records from top-level individual records, and keeps individual booking/session/service Trash records visible as individual restore items. Lifecycle write operations were not migrated yet; non-production/test fallback behavior still preserves current same-session in-memory Trash records during the transition.
+
+No schema or index migration was added in this phase. Phase F.2 can now move patient archive/reactivate and grouped Delete Patient Data writes to database transactions.

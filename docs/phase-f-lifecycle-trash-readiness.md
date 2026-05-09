@@ -281,3 +281,13 @@ Phase F tests should cover:
 - Marketing site changes.
 - Destructive reset/truncate/drop scripts.
 - Scheduler/cron purge automation.
+
+## Implementation Note: Phase F.1
+
+Phase F.1 moved the Trash recovery read model into `trashRepository` using Drizzle/PostgreSQL when the database is available. The repository now reconstructs the raw Trash payload from persisted lifecycle metadata on patients, bookings, sessions, and services, anchored by persisted `deletion_groups`. API routes still do not import Drizzle directly.
+
+Current Trash API response shape is preserved: `/api/trash` still returns `{ patients, bookings, sessions, services }`, and the dashboard continues to build the grouped recovery view from that payload. Public entity IDs remain stable through `public_id` mappings, and database UUID primary keys are kept internal to the repository mapping layer.
+
+Patient-data deletion groups can now be reconstructed from persisted child metadata so the grouped recovery view can show one top-level patient group with booking/session child counts and suppress grouped children from top-level individual records. Individual booking, session, and service Trash records are reconstructed as individual records with the same labels, restore fields, filtering, searching, and sorting behavior.
+
+Lifecycle write operations were not migrated in this phase. During the transition, non-production/test fallback behavior still preserves same-running-session in-memory Trash records until Phase F.2 and Phase F.3 move lifecycle writes to database transactions. No index migration was added in Phase F.1; existing practitioner/deleted indexes are sufficient for the first DB read model, though Phase F.2/F.4 can revisit `deletion_group_id` and `restore_until` indexes if grouped restore or purge queries need them.
