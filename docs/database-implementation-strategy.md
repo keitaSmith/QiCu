@@ -477,3 +477,11 @@ Booking/session compatibility remains aligned with the Phase E design: `bookings
 Lifecycle/Trash and Google integration remain deferred. Lifecycle/Trash uses in-memory helpers plus transition mirroring/sync for running-session behavior, while grouped Trash restart persistence remains a Phase F responsibility. Google integration state remains in-memory and no Google tokens are persisted to PostgreSQL.
 
 API routes still do not import Drizzle directly. Phase F can begin after manual browser smoke testing of booking/session creation, linked sessions, patient export, and same-session Trash restore flows.
+
+## Implementation note: Phase F.0 lifecycle/Trash readiness audit
+
+Phase F.0 audited the remaining lifecycle and Trash transition boundary before moving `lifecycleRepository` or `trashRepository` to Drizzle-backed transactional behavior. Practitioners, services, patients, bookings, and sessions remain Drizzle-backed at the repository layer; lifecycle/Trash still uses in-memory helpers with narrow transition sync; Google integration remains in-memory.
+
+The current schema already includes the main lifecycle persistence building blocks: `deletion_groups`, lifecycle metadata columns on patients/services/bookings/sessions, restore-window checks, deletion-type checks, and `audit_events`. Phase F.1 should review whether additional child-table indexes on `deletion_group_id` and `restore_until` are needed for Trash grouping and purge efficiency, but no broad product-field migration is required before starting.
+
+Recommended Phase F order is: build the DB-backed deletion group/Trash read model first, then migrate patient archive/reactivate and grouped Delete Patient Data transactions, then individual booking/session/service Trash transactions, then DB-backed purge, then lifecycle-aware patient export. Grouped Trash restart persistence remains the core Phase F goal, and API routes should continue to call repositories rather than importing Drizzle directly.
