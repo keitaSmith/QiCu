@@ -83,6 +83,18 @@ test('getById respects practitioner scope and trash state', async () => {
   assert.equal(await getById(practitionerId, trashed.id), null)
 })
 
+test('trashed bookings are excluded from normal active lists during the current runtime session', async () => {
+  cleanup()
+  const active = booking({ id: 'b-repo-active-list' })
+  const trashed = booking({ id: 'b-repo-trash-list', trashMetadata: trashMetadata() })
+  BOOKINGS.push(active, trashed)
+
+  const activeIds = (await listByPractitioner(practitionerId)).map(item => item.id)
+
+  assert.deepEqual(activeIds, [active.id])
+  assert.equal(activeIds.includes(trashed.id), false)
+})
+
 test('confirmed and pending bookings block availability while other states do not', async () => {
   cleanup()
   for (const status of ['confirmed', 'pending', 'cancelled', 'no-show', 'completed'] as const) {

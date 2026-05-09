@@ -451,3 +451,9 @@ Bookings keep their existing public IDs such as `b-tom-today-001`, `b-tom-live-0
 During the transition, DB-backed booking reads/writes mirror into the existing `BOOKINGS` store. Lifecycle operations sync booking Trash state back to the database, Google sync/reconcile can persist external status fields, patient export can still combine booking data with in-memory sessions, and booking responses can still compute transitional `sessionId` from in-memory sessions. `bookings.session_id` was not added; `sessions.booking_id` remains canonical for Phase E.3.
 
 API routes still do not import Drizzle directly. Local DB-backed booking runtime requires the local database to be migrated and seeded first.
+
+### Phase E.2 follow-up: lifecycle/Trash restart persistence
+
+Restart-persistent Trash recovery is intentionally deferred. Phase E.2 persists booking deleted state well enough that deleted bookings should not reappear in normal active booking lists, but lifecycle/Trash grouping still comes from in-memory helpers and is not expected to fully survive an app restart.
+
+Do not treat missing Trash records after restart as a Phase E.2 blocker unless deleted records reappear in active/default views. Phase F should migrate lifecycle and Trash helpers to database-backed transactions so `deletion_groups`, Trash metadata, restore windows, restore, and purge behavior are persisted together.

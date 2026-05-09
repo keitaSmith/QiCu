@@ -208,8 +208,14 @@ async function runWithFallback<T>(query: () => Promise<T>, fallback: () => T) {
   }
 }
 
-function shouldUseDatabaseWrites() {
-  return process.env.NODE_ENV !== 'test'
+function isTestRuntime() {
+  return process.env.NODE_ENV === 'test' ||
+    process.env.npm_lifecycle_event === 'test' ||
+    Boolean(process.env.NODE_TEST_CONTEXT)
+}
+
+function shouldUseDatabase() {
+  return !isTestRuntime()
 }
 
 async function loadPublicIdMaps(rows: BookingRow[]): Promise<BookingMaps> {
@@ -450,6 +456,7 @@ function reconcileBookingObject(
 export async function listByPractitioner(practitionerId: string) {
   const dbPractitionerId = databasePractitionerId(practitionerId)
   if (!dbPractitionerId) return fallbackListByPractitioner(practitionerId)
+  if (!shouldUseDatabase()) return fallbackListByPractitioner(practitionerId)
 
   return runWithFallback(
     async () => {
@@ -470,6 +477,7 @@ export async function listByPatient(practitionerId: string, patientId: string) {
 export async function listGoogleImportPreviewBookings(practitionerId: string) {
   const dbPractitionerId = databasePractitionerId(practitionerId)
   if (!dbPractitionerId) return fallbackListGoogleImportPreviewBookings(practitionerId)
+  if (!shouldUseDatabase()) return fallbackListGoogleImportPreviewBookings(practitionerId)
 
   return runWithFallback(
     async () => {
@@ -495,6 +503,7 @@ export async function listGoogleLinkedBookingsForReconcile(practitionerId: strin
 export async function getById(practitionerId: string, bookingId: string) {
   const dbPractitionerId = databasePractitionerId(practitionerId)
   if (!dbPractitionerId) return fallbackGetById(practitionerId, bookingId)
+  if (!shouldUseDatabase()) return fallbackGetById(practitionerId, bookingId)
 
   return runWithFallback(
     async () => {
@@ -550,7 +559,7 @@ export async function createWithOverlapCheck(
 ) {
   const dbPractitionerId = databasePractitionerId(practitionerId)
   if (!dbPractitionerId) return fallbackCreateWithOverlapCheck(practitionerId, input, options)
-  if (!shouldUseDatabaseWrites()) {
+  if (!shouldUseDatabase()) {
     return fallbackCreateWithOverlapCheck(practitionerId, input, options)
   }
 
@@ -607,7 +616,7 @@ export async function updateWithOverlapCheck(
 ) {
   const dbPractitionerId = databasePractitionerId(practitionerId)
   if (!dbPractitionerId) return fallbackUpdateWithOverlapCheck(practitionerId, bookingId, input)
-  if (!shouldUseDatabaseWrites()) {
+  if (!shouldUseDatabase()) {
     return fallbackUpdateWithOverlapCheck(practitionerId, bookingId, input)
   }
 
@@ -692,7 +701,7 @@ export async function reconcileGoogleLinkedBooking(
   if (!dbPractitionerId) {
     return fallbackReconcileGoogleLinkedBooking(practitionerId, bookingId, event, options)
   }
-  if (!shouldUseDatabaseWrites()) {
+  if (!shouldUseDatabase()) {
     return fallbackReconcileGoogleLinkedBooking(practitionerId, bookingId, event, options)
   }
 
@@ -723,7 +732,7 @@ export async function syncRuntimeBookingToDatabase(
     bookingOverride ??
     BOOKINGS.find(booking => booking.id === bookingId && booking.practitionerId === practitionerId)
   if (!runtimeBooking) return
-  if (!shouldUseDatabaseWrites()) {
+  if (!shouldUseDatabase()) {
     rememberRuntimeBooking(runtimeBooking)
     return
   }

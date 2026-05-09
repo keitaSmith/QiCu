@@ -108,9 +108,9 @@ test('patient lifecycle impact counts past bookings, future bookings, sessions, 
   cleanup()
   addPatient()
   addBooking({ id: 'b-life-past', start: '2026-05-01T10:00:00.000Z', end: '2026-05-01T10:45:00.000Z' })
-  addBooking({ id: 'b-life-future', start: '2026-05-08T10:00:00.000Z', end: '2026-05-08T10:45:00.000Z' })
-  addBooking({ id: 'b-life-future-cancelled', start: '2026-05-09T10:00:00.000Z', end: '2026-05-09T10:45:00.000Z', status: 'cancelled' })
-  addBooking({ id: 'b-life-other-prac', practitionerId: 'other-prac', start: '2026-05-08T10:00:00.000Z' })
+  addBooking({ id: 'b-life-future', start: '2026-06-08T10:00:00.000Z', end: '2026-06-08T10:45:00.000Z' })
+  addBooking({ id: 'b-life-future-cancelled', start: '2026-06-09T10:00:00.000Z', end: '2026-06-09T10:45:00.000Z', status: 'cancelled' })
+  addBooking({ id: 'b-life-other-prac', practitionerId: 'other-prac', start: '2026-06-08T10:00:00.000Z' })
   addSession({ id: 'S-LIFE-1' })
   addSession({ id: 'S-LIFE-other', practitionerId: 'other-prac' })
 

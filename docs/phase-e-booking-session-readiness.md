@@ -242,3 +242,11 @@ Phase E.2 moved `bookingsRepository` to Drizzle-backed runtime persistence when 
 Sessions remain in-memory. Booking responses still compute the transitional `sessionId` from the in-memory session relationship when needed, while `bookings.session_id` remains absent from the database and `sessions.booking_id` remains the canonical relationship for the later session migration.
 
 Lifecycle/Trash and Google integration remain in-memory during this phase. DB-backed booking reads and writes mirror into the existing `BOOKINGS` store so patient export, booking delete/restore, patient grouped Trash behavior, Google import/reconcile, Google sync fallback updates, and task/session-note workflows continue to see public booking IDs. Phase E.3 can move `sessionsRepository` next after manual browser testing of bookings, sessions, Trash, export, and Google flows.
+
+### Known limitation: Trash recovery restart persistence
+
+Bookings are Drizzle-backed after Phase E.2, but lifecycle/Trash recovery is still a transition layer over the in-memory lifecycle helpers. Delete and restore flows work during a running app session because booking rows are mirrored into `BOOKINGS` and lifecycle operations sync deleted booking state back to the booking table.
+
+Trash grouping and recovery state are not fully restart-persistent yet. After an app restart, a deleted booking should remain excluded from normal active booking lists because `bookings.deleted_at` is persisted, but the Trash/recovery view may not reconstruct the original recovery group because `deletion_groups` and grouped Trash metadata are not yet managed transactionally by the lifecycle repository. That gap is expected until Phase F.
+
+Phase F must move lifecycle/Trash operations to database-backed transactions that persist `deletion_groups`, child record Trash metadata, restore windows, restore operations, and purge behavior together. Re-test booking delete, individual restore, grouped patient delete/restore, Trash filters, and restart recovery once Phase F lands.

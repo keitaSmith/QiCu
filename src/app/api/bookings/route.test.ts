@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { NextRequest } from 'next/server'
@@ -68,8 +68,8 @@ function addOverlappingBooking(status: Booking['status'], overrides: Partial<Boo
     serviceId: overrides.serviceId ?? 'tom-acu-45',
     serviceName: overrides.serviceName ?? 'Acupuncture',
     serviceDurationMinutes: overrides.serviceDurationMinutes ?? 45,
-    start: overrides.start ?? '2026-05-10T12:30:00.000Z',
-    end: overrides.end ?? '2026-05-10T13:15:00.000Z',
+    start: overrides.start ?? '2026-06-10T12:30:00.000Z',
+    end: overrides.end ?? '2026-06-10T13:15:00.000Z',
     status,
     resource: overrides.resource,
     notes: overrides.notes,
@@ -83,8 +83,8 @@ test('creates a valid booking', async () => {
   const snapshot = BOOKINGS.map(booking => ({ ...booking }))
 
   try {
-    const start = new Date('2026-05-10T12:30:00.000Z')
-    const end = new Date('2026-05-10T13:15:00.000Z')
+    const start = new Date('2026-06-10T12:30:00.000Z')
+    const end = new Date('2026-06-10T13:15:00.000Z')
     const response = await POST(
       buildRequest({
         patientId: 'P-T-1001',
@@ -138,7 +138,7 @@ test('rejects invalid booking durations', async () => {
   const snapshot = BOOKINGS.map(booking => ({ ...booking }))
 
   try {
-    const start = '2026-05-10T12:30:00.000Z'
+    const start = '2026-06-10T12:30:00.000Z'
     const response = await POST(
       buildRequest({
         patientId: 'P-T-1001',
@@ -170,8 +170,8 @@ test('rejects creating a booking for an archived patient', async () => {
       buildRequest({
         patientId: 'P-T-1001',
         serviceId: 'tom-acu-45',
-        start: '2026-05-10T12:30:00.000Z',
-        end: '2026-05-10T13:15:00.000Z',
+        start: '2026-06-10T12:30:00.000Z',
+        end: '2026-06-10T13:15:00.000Z',
         skipGoogleWriteback: true,
       }),
     )
@@ -197,8 +197,8 @@ test('rejects creating a patient-scoped booking for an archived patient', async 
     const response = await POST_PATIENT_BOOKING(
       buildRequest({
         serviceId: 'tom-acu-45',
-        start: '2026-05-10T12:30:00.000Z',
-        end: '2026-05-10T13:15:00.000Z',
+        start: '2026-06-10T12:30:00.000Z',
+        end: '2026-06-10T13:15:00.000Z',
       }),
       { params: Promise.resolve({ patientId: 'P-T-1001' }) },
     )
@@ -225,8 +225,8 @@ test('rejects creating a booking with a disabled service', async () => {
       buildRequest({
         patientId: 'P-T-1001',
         serviceId: 'tom-acu-45',
-        start: '2026-05-10T12:30:00.000Z',
-        end: '2026-05-10T13:15:00.000Z',
+        start: '2026-06-10T12:30:00.000Z',
+        end: '2026-06-10T13:15:00.000Z',
         skipGoogleWriteback: true,
       }),
     )
@@ -263,8 +263,8 @@ test('still creates a booking when Google Calendar sync fails', async () => {
   }
 
   try {
-    const start = new Date('2026-05-10T12:30:00.000Z')
-    const end = new Date('2026-05-10T13:15:00.000Z')
+    const start = new Date('2026-06-10T12:30:00.000Z')
+    const end = new Date('2026-06-10T13:15:00.000Z')
     const response = await POST(
       buildRequest({
         patientId: 'P-T-1001',
@@ -320,8 +320,8 @@ test('updates a booking when the new time does not overlap', async () => {
   try {
     const response = await PATCH(
       buildPatchRequest({
-        start: '2026-05-10T12:30:00.000Z',
-        end: '2026-05-10T13:00:00.000Z',
+        start: '2026-06-10T12:30:00.000Z',
+        end: '2026-06-10T13:00:00.000Z',
         skipGoogleWriteback: true,
       }),
       { params: Promise.resolve({ bookingId: 'b-tom-today-002' }) },
@@ -330,8 +330,8 @@ test('updates a booking when the new time does not overlap', async () => {
     assert.equal(response.status, 200)
     const updated = await response.json()
     assert.equal(updated.id, 'b-tom-today-002')
-    assert.equal(updated.start, '2026-05-10T12:30:00.000Z')
-    assert.equal(updated.end, '2026-05-10T13:00:00.000Z')
+    assert.equal(updated.start, '2026-06-10T12:30:00.000Z')
+    assert.equal(updated.end, '2026-06-10T13:00:00.000Z')
   } finally {
     restoreBookings(snapshot)
   }
@@ -348,8 +348,8 @@ test('cancelled, no-show, and completed bookings do not block creating the same 
         buildRequest({
           patientId: 'P-T-1001',
           serviceId: 'tom-acu-45',
-          start: '2026-05-10T12:30:00.000Z',
-          end: '2026-05-10T13:15:00.000Z',
+          start: '2026-06-10T12:30:00.000Z',
+          end: '2026-06-10T13:15:00.000Z',
           skipGoogleWriteback: true,
         }),
       )
@@ -372,8 +372,8 @@ test('confirmed and pending bookings still block creating the same time', async 
         buildRequest({
           patientId: 'P-T-1001',
           serviceId: 'tom-acu-45',
-          start: '2026-05-10T12:30:00.000Z',
-          end: '2026-05-10T13:15:00.000Z',
+          start: '2026-06-10T12:30:00.000Z',
+          end: '2026-06-10T13:15:00.000Z',
           skipGoogleWriteback: true,
         }),
       )
@@ -407,8 +407,8 @@ test('trashed bookings do not block creating the same time', async () => {
       buildRequest({
         patientId: 'P-T-1001',
         serviceId: 'tom-acu-45',
-        start: '2026-05-10T12:30:00.000Z',
-        end: '2026-05-10T13:15:00.000Z',
+        start: '2026-06-10T12:30:00.000Z',
+        end: '2026-06-10T13:15:00.000Z',
         skipGoogleWriteback: true,
       }),
     )
@@ -427,8 +427,8 @@ test('cancelled booking does not block updating another booking to the same time
 
     const response = await PATCH(
       buildPatchRequest({
-        start: '2026-05-10T12:30:00.000Z',
-        end: '2026-05-10T13:15:00.000Z',
+        start: '2026-06-10T12:30:00.000Z',
+        end: '2026-06-10T13:15:00.000Z',
         skipGoogleWriteback: true,
       }),
       { params: Promise.resolve({ bookingId: 'b-tom-today-002' }) },
@@ -436,8 +436,8 @@ test('cancelled booking does not block updating another booking to the same time
 
     assert.equal(response.status, 200)
     const updated = await response.json()
-    assert.equal(updated.start, '2026-05-10T12:30:00.000Z')
-    assert.equal(updated.end, '2026-05-10T13:15:00.000Z')
+    assert.equal(updated.start, '2026-06-10T12:30:00.000Z')
+    assert.equal(updated.end, '2026-06-10T13:15:00.000Z')
   } finally {
     restoreBookings(snapshot)
   }
@@ -474,8 +474,8 @@ test('rejects rescheduling a cancelled booking without triggering Google sync', 
 
     const response = await PATCH(
       buildPatchRequest({
-        start: '2026-05-10T12:30:00.000Z',
-        end: '2026-05-10T13:00:00.000Z',
+        start: '2026-06-10T12:30:00.000Z',
+        end: '2026-06-10T13:00:00.000Z',
       }),
       { params: Promise.resolve({ bookingId: 'b-tom-today-002' }) },
     )
@@ -534,8 +534,8 @@ test('allows rescheduling a cancelled booking when it is explicitly reactivated'
 
     const response = await PATCH(
       buildPatchRequest({
-        start: '2026-05-10T12:30:00.000Z',
-        end: '2026-05-10T13:00:00.000Z',
+        start: '2026-06-10T12:30:00.000Z',
+        end: '2026-06-10T13:00:00.000Z',
         status: 'confirmed',
         skipGoogleWriteback: true,
       }),
@@ -545,8 +545,8 @@ test('allows rescheduling a cancelled booking when it is explicitly reactivated'
     assert.equal(response.status, 200)
     const updated = await response.json()
     assert.equal(updated.status, 'confirmed')
-    assert.equal(updated.start, '2026-05-10T12:30:00.000Z')
-    assert.equal(updated.end, '2026-05-10T13:00:00.000Z')
+    assert.equal(updated.start, '2026-06-10T12:30:00.000Z')
+    assert.equal(updated.end, '2026-06-10T13:00:00.000Z')
   } finally {
     restoreBookings(snapshot)
   }
@@ -582,8 +582,8 @@ test('still updates a booking when Google Calendar update sync fails', async () 
   try {
     const response = await PATCH(
       buildPatchRequest({
-        start: '2026-05-10T12:30:00.000Z',
-        end: '2026-05-10T13:00:00.000Z',
+        start: '2026-06-10T12:30:00.000Z',
+        end: '2026-06-10T13:00:00.000Z',
       }),
       { params: Promise.resolve({ bookingId: 'b-tom-today-002' }) },
     )
@@ -591,7 +591,7 @@ test('still updates a booking when Google Calendar update sync fails', async () 
     assert.equal(response.status, 200)
     const updated = await response.json()
     assert.equal(updated.externalSyncStatus, 'error')
-    assert.equal(updated.start, '2026-05-10T12:30:00.000Z')
+    assert.equal(updated.start, '2026-06-10T12:30:00.000Z')
     assert.equal(loggedErrors.length, 1)
     assert.equal(loggedErrors[0][0], 'Google Calendar booking update sync failed')
   } finally {
