@@ -291,3 +291,13 @@ Current Trash API response shape is preserved: `/api/trash` still returns `{ pat
 Patient-data deletion groups can now be reconstructed from persisted child metadata so the grouped recovery view can show one top-level patient group with booking/session child counts and suppress grouped children from top-level individual records. Individual booking, session, and service Trash records are reconstructed as individual records with the same labels, restore fields, filtering, searching, and sorting behavior.
 
 Lifecycle write operations were not migrated in this phase. During the transition, non-production/test fallback behavior still preserves same-running-session in-memory Trash records until Phase F.2 and Phase F.3 move lifecycle writes to database transactions. No index migration was added in Phase F.1; existing practitioner/deleted indexes are sufficient for the first DB read model, though Phase F.2/F.4 can revisit `deletion_group_id` and `restore_until` indexes if grouped restore or purge queries need them.
+
+## Implementation Note: Phase F.2
+
+Phase F.2 moved patient archive/reactivate and grouped Delete Patient Data writes into `lifecycleRepository` Drizzle transactions when PostgreSQL is available.
+
+Patient archive now verifies practitioner scope, updates patient archive state without setting Trash metadata, and preserves the existing optional future-booking cancellation behavior in the same transaction. Reactivation clears the archive state without touching Trash metadata. Both paths keep public patient and booking IDs stable and mirror affected runtime records for the remaining transition layer.
+
+Grouped Delete Patient Data now creates a persisted `deletion_groups` row with deletion type `patient-data`, then applies the same `deleted_at`, `restore_until`, `deleted_by_practitioner_id`, `deletion_group_id`, and deletion type metadata to the patient, linked bookings, and linked sessions in one transaction. Grouped patient restore now verifies practitioner scope and restore windows, then clears Trash metadata from all grouped patient/bookings/sessions atomically. The Phase F.1 Trash read model can reconstruct grouped patient recovery from persisted DB state after restart.
+
+Individual booking, session, and service Trash delete/restore operations remain in the existing behavior path for Phase F.3. Purge remains deferred to Phase F.4, and patient export remains behavior-compatible with current repository mirroring until the later lifecycle-aware export step.
