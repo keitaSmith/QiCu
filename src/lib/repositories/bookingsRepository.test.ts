@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 
 import { BOOKINGS } from '@/data/bookings'
+import { sessionsStore } from '@/data/sessionsStore'
 import type { Booking } from '@/models/booking'
 import type { TrashMetadata } from '@/models/lifecycle'
+import type { Session } from '@/models/session'
 import {
   createWithOverlapCheck,
   findAvailabilityBlockingBookings,
@@ -22,6 +24,9 @@ const otherPractitionerId = 'prac-repo-booking-other'
 function cleanup() {
   for (let index = BOOKINGS.length - 1; index >= 0; index -= 1) {
     if (BOOKINGS[index].id.startsWith('b-repo-')) BOOKINGS.splice(index, 1)
+  }
+  for (let index = sessionsStore.length - 1; index >= 0; index -= 1) {
+    if (sessionsStore[index].id.startsWith('S-REPO-BOOKING-')) sessionsStore.splice(index, 1)
   }
 }
 
@@ -53,6 +58,19 @@ function booking(input: Partial<Booking> = {}): Booking {
     externalEventId: input.externalEventId,
     externalSyncStatus: input.externalSyncStatus,
     externalLastSyncedAt: input.externalLastSyncedAt,
+  }
+}
+
+function session(input: Partial<Session> = {}): Session {
+  return {
+    id: input.id ?? `S-REPO-BOOKING-${Math.random().toString(36).slice(2, 8)}`,
+    practitionerId: input.practitionerId ?? practitionerId,
+    patientId: input.patientId ?? 'P-REPO-BOOKING',
+    bookingId: input.bookingId ?? null,
+    startDateTime: input.startDateTime ?? '2026-05-10T10:00:00.000Z',
+    serviceId: input.serviceId,
+    serviceName: input.serviceName,
+    chiefComplaint: input.chiefComplaint ?? 'Repository booking link test',
   }
 }
 
@@ -239,4 +257,22 @@ test('demo bookings keep public IDs and do not duplicate transition mirror rows'
     BOOKINGS.filter(item => item.id === bookingId && item.practitionerId === practitionerId).length,
     beforeCount || 1,
   )
+})
+
+test('booking responses compute transitional sessionId from public linked sessions', async () => {
+  cleanup()
+  const linkedBooking = booking({ id: 'b-repo-session-public-link' })
+  const linkedSession = session({
+    id: 'S-REPO-BOOKING-public-link',
+    bookingId: linkedBooking.id,
+    patientId: linkedBooking.patientId,
+  })
+  BOOKINGS.push(linkedBooking)
+  sessionsStore.push(linkedSession)
+
+  const result = await getById(practitionerId, linkedBooking.id)
+
+  assert.equal(result?.id, linkedBooking.id)
+  assert.equal(result?.sessionId, linkedSession.id)
+  assert.equal(/^[0-9a-f-]{36}$/i.test(result?.sessionId ?? ''), false)
 })

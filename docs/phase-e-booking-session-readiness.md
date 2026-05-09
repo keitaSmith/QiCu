@@ -260,3 +260,15 @@ Linked sessions now persist the booking database UUID in `sessions.booking_id`, 
 Lifecycle/Trash remains in-memory during this phase. DB-backed session reads and writes mirror into `sessionsStore`, and lifecycle operations sync affected session Trash/link state back to the sessions table where possible during the running app session. The Phase E.2 restart-persistence limitation still applies: grouped Trash recovery state is not fully restart-persistent until Phase F moves lifecycle/Trash to database-backed transactions.
 
 Google integration remains in-memory. Phase F can move lifecycle and Trash next after manual browser testing of sessions, booking-linked note workflows, patient export, individual session restore, grouped patient restore, and booking/session pages.
+
+## Completion audit: Phase E
+
+The Phase E completion audit confirms that bookings and sessions have joined practitioners, services, and patients as Drizzle-backed repository domains when PostgreSQL is available. Public booking IDs such as `b-tom-today-001` and `b-tom-live-003`, and public session IDs such as `S-T-1001` and `S-K-2001`, remain the current app/API IDs through `bookings.public_id` and `sessions.public_id`.
+
+Database UUID primary keys remain internal. Repositories accept public IDs as input, map to UUIDs internally, and return API-compatible objects with public practitioner, patient, service, booking, and session IDs. Seed rows include matching public IDs for bookings and sessions.
+
+The booking/session relationship remains one-way in the database: `sessions.booking_id` is nullable and canonical, and `bookings.session_id` was not added. Current booking responses may still include transitional `sessionId` values computed from linked sessions and exposed as public session IDs for UI and task workflows.
+
+Lifecycle/Trash remains in-memory with transition mirroring and narrow sync for booking/session Trash and link state during a running app session. Grouped Trash restart persistence remains deferred to Phase F. Google integration remains in-memory, with no real tokens seeded or persisted to PostgreSQL.
+
+Phase F can begin after manual browser smoke testing of bookings, sessions, patient detail/export, individual booking/session restore, and grouped patient Trash restore.

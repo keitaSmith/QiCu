@@ -130,6 +130,13 @@ function publicSessionIdForBooking(practitionerId: string, bookingId: string) {
   )?.sessionId
 }
 
+function withComputedRuntimeSessionId(booking: Booking): Booking {
+  return {
+    ...booking,
+    sessionId: publicSessionIdForBooking(booking.practitionerId, booking.id),
+  }
+}
+
 function trashMetadataForRow(row: BookingRow, practitionerId: string): Booking['trashMetadata'] {
   if (!row.deletedAt || !row.restoreUntil) return undefined
 
@@ -315,14 +322,16 @@ async function resolveDatabaseServiceId(dbPractitionerId: string, serviceId: str
 }
 
 function fallbackListByPractitioner(practitionerId: string) {
-  return BOOKINGS.filter(booking => booking.practitionerId === practitionerId && !isTrashed(booking))
+  return BOOKINGS
+    .filter(booking => booking.practitionerId === practitionerId && !isTrashed(booking))
+    .map(withComputedRuntimeSessionId)
 }
 
 function fallbackListGoogleImportPreviewBookings(practitionerId: string) {
   return BOOKINGS.filter(booking => booking.practitionerId === practitionerId)
 }
 
-function fallbackGetById(practitionerId: string, bookingId: string) {
+function fallbackGetByIdRaw(practitionerId: string, bookingId: string) {
   return (
     BOOKINGS.find(
       booking =>
@@ -331,6 +340,11 @@ function fallbackGetById(practitionerId: string, bookingId: string) {
         !isTrashed(booking),
     ) ?? null
   )
+}
+
+function fallbackGetById(practitionerId: string, bookingId: string) {
+  const booking = fallbackGetByIdRaw(practitionerId, bookingId)
+  return booking ? withComputedRuntimeSessionId(booking) : null
 }
 
 function fallbackHasOverlapForPractitioner(
@@ -384,7 +398,7 @@ function fallbackUpdateWithOverlapCheck(
   bookingId: string,
   input: UpdateBookingInput,
 ) {
-  const booking = fallbackGetById(practitionerId, bookingId)
+  const booking = fallbackGetByIdRaw(practitionerId, bookingId)
   if (!booking) return { error: 'not-found' as const }
 
   const nextStart = input.start ? new Date(input.start) : new Date(booking.start)

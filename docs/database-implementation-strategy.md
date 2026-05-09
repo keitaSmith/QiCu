@@ -467,3 +467,13 @@ Sessions keep their existing public IDs such as `S-T-1001` and `S-K-2001` throug
 Linked sessions use nullable `sessions.booking_id` as the canonical database relationship. `bookings.session_id` was not added. During the transition, booking responses can still expose a computed/transitional `sessionId` using public session IDs so existing booking detail, task, and note workflows remain stable.
 
 DB-backed session reads and writes mirror into `sessionsStore`, and lifecycle operations narrowly sync session Trash/link changes back to the sessions table during the running app session. Restart-persistent grouped Trash recovery remains deferred to Phase F. API routes still do not import Drizzle directly, and local DB-backed session runtime requires the local database to be migrated and seeded first.
+
+## Implementation note: Phase E completion audit
+
+The Phase E completion audit confirmed that practitioners, services, patients, bookings, and sessions are now Drizzle-backed at the repository layer when PostgreSQL is available. Public IDs remain stable across all migrated domains, and database UUID primary keys remain internal to repository mapping code.
+
+Booking/session compatibility remains aligned with the Phase E design: `bookings.public_id` and `sessions.public_id` preserve current app IDs, `sessions.booking_id` is the canonical nullable database relationship, and `bookings.session_id` was not added. Booking responses can still expose transitional computed `sessionId` values as public session IDs where current UI and task flows need them.
+
+Lifecycle/Trash and Google integration remain deferred. Lifecycle/Trash uses in-memory helpers plus transition mirroring/sync for running-session behavior, while grouped Trash restart persistence remains a Phase F responsibility. Google integration state remains in-memory and no Google tokens are persisted to PostgreSQL.
+
+API routes still do not import Drizzle directly. Phase F can begin after manual browser smoke testing of booking/session creation, linked sessions, patient export, and same-session Trash restore flows.
