@@ -1,25 +1,24 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { FhirPatient } from '@/models/patient'
 import { usePractitioner } from '@/components/layout/PractitionerContext'
-import { withPractitionerHeaders } from '@/lib/practitioners'
+import { buildPractitionerScopedFetchInit, type ClientPractitionerScope } from '@/lib/auth/clientFetch'
 import { getErrorMessage } from '@/lib/errors'
 
-async function fetchPatients(practitionerId: string): Promise<FhirPatient[]> {
-  const res = await fetch('/api/patients', {
+async function fetchPatients(scope: ClientPractitionerScope): Promise<FhirPatient[]> {
+  const res = await fetch('/api/patients', buildPractitionerScopedFetchInit(scope, {
     cache: 'no-store',
-    headers: withPractitionerHeaders(practitionerId),
-  })
+  }))
   if (!res.ok) throw new Error('Failed to load patients')
   return res.json()
 }
 
-async function createPatient(payload: FhirPatient, practitionerId: string): Promise<FhirPatient> {
-  const res = await fetch('/api/patients', {
+async function createPatient(payload: FhirPatient, scope: ClientPractitionerScope): Promise<FhirPatient> {
+  const res = await fetch('/api/patients', buildPractitionerScopedFetchInit(scope, {
     method: 'POST',
-    headers: withPractitionerHeaders(practitionerId, { 'Content-Type': 'application/json' }),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  })
+  }))
 
   if (!res.ok) {
     const data = await res.json().catch(() => null)
@@ -32,13 +31,13 @@ async function createPatient(payload: FhirPatient, practitionerId: string): Prom
 async function patchPatient(
   patientId: string,
   payload: Partial<FhirPatient>,
-  practitionerId: string,
+  scope: ClientPractitionerScope,
 ): Promise<FhirPatient> {
-  const res = await fetch(`/api/patients/${encodeURIComponent(patientId)}`, {
+  const res = await fetch(`/api/patients/${encodeURIComponent(patientId)}`, buildPractitionerScopedFetchInit(scope, {
     method: 'PATCH',
-    headers: withPractitionerHeaders(practitionerId, { 'Content-Type': 'application/json' }),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  })
+  }))
 
   if (!res.ok) {
     const data = await res.json().catch(() => null)
@@ -48,11 +47,10 @@ async function patchPatient(
   return res.json()
 }
 
-async function deletePatientRequest(patientId: string, practitionerId: string): Promise<void> {
-  const res = await fetch(`/api/patients/${encodeURIComponent(patientId)}`, {
+async function deletePatientRequest(patientId: string, scope: ClientPractitionerScope): Promise<void> {
+  const res = await fetch(`/api/patients/${encodeURIComponent(patientId)}`, buildPractitionerScopedFetchInit(scope, {
     method: 'DELETE',
-    headers: withPractitionerHeaders(practitionerId),
-  })
+  }))
 
   if (!res.ok) {
     const data = await res.json().catch(() => null)
@@ -61,7 +59,8 @@ async function deletePatientRequest(patientId: string, practitionerId: string): 
 }
 
 export function usePatients() {
-  const { practitionerId } = usePractitioner()
+  const { practitionerId, source, authLoading } = usePractitioner()
+  const scope = useMemo(() => ({ practitionerId, source }), [practitionerId, source])
   const [patients, setPatients] = useState<FhirPatient[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -70,7 +69,8 @@ export function usePatients() {
     try {
       setLoading(true)
       setError(null)
-      const items = await fetchPatients(practitionerId)
+      if (authLoading) return []
+      const items = await fetchPatients(scope)
       setPatients(items)
       return items
     } catch (e: unknown) {
@@ -79,11 +79,11 @@ export function usePatients() {
     } finally {
       setLoading(false)
     }
-  }, [practitionerId])
+  }, [authLoading, scope])
 
   useEffect(() => {
-    refresh().catch(() => null)
-  }, [refresh])
+    if (!authLoading) refresh().catch(() => null)
+  }, [authLoading, refresh])
 
   const replacePatient = useCallback((updated: FhirPatient) => {
     setPatients(prev => prev.map(p => (p.id === updated.id ? updated : p)))
@@ -101,7 +101,7 @@ export function usePatients() {
     async (payload: FhirPatient) => {
       try {
         setError(null)
-        const created = await createPatient(payload, practitionerId)
+        const created = await createPatient(payload, scope)
         prependPatient(created)
         return created
       } catch (e: unknown) {
@@ -109,14 +109,14 @@ export function usePatients() {
         return null
       }
     },
-    [prependPatient, practitionerId],
+    [prependPatient, scope],
   )
 
   const patchPatientById = useCallback(
     async (patientId: string, payload: Partial<FhirPatient>) => {
       try {
         setError(null)
-        const updated = await patchPatient(patientId, payload, practitionerId)
+        const updated = await patchPatient(patientId, payload, scope)
         replacePatient(updated)
         return updated
       } catch (e: unknown) {
@@ -124,14 +124,14 @@ export function usePatients() {
         return null
       }
     },
-    [replacePatient, practitionerId],
+    [replacePatient, scope],
   )
 
   const deletePatientById = useCallback(
     async (patientId: string) => {
       try {
         setError(null)
-        await deletePatientRequest(patientId, practitionerId)
+        await deletePatientRequest(patientId, scope)
         removePatient(patientId)
         return true
       } catch (e: unknown) {
@@ -139,7 +139,7 @@ export function usePatients() {
         return false
       }
     },
-    [removePatient, practitionerId],
+    [removePatient, scope],
   )
 
   return {

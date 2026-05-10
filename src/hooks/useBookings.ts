@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { Booking, BookingStatus } from '@/models/booking'
 import { BOOKINGS_CHANGED_EVENT, emitBookingsChanged } from '@/lib/booking-events'
 import { usePractitioner } from '@/components/layout/PractitionerContext'
-import { withPractitionerHeaders } from '@/lib/practitioners'
+import { buildPractitionerScopedFetchInit, type ClientPractitionerScope } from '@/lib/auth/clientFetch'
 import { getErrorMessage } from '@/lib/errors'
 
 type CreateBookingInput = {
@@ -43,21 +43,20 @@ function createRequestError(status: number, message: string): RequestError {
   return Object.assign(new Error(message), { status })
 }
 
-async function fetchBookings(practitionerId: string): Promise<Booking[]> {
-  const res = await fetch('/api/bookings', {
+async function fetchBookings(scope: ClientPractitionerScope): Promise<Booking[]> {
+  const res = await fetch('/api/bookings', buildPractitionerScopedFetchInit(scope, {
     cache: 'no-store',
-    headers: withPractitionerHeaders(practitionerId),
-  })
+  }))
   if (!res.ok) throw new Error('Failed to load bookings')
   return res.json()
 }
 
-async function createBooking(payload: CreateBookingInput, practitionerId: string): Promise<Booking> {
-  const res = await fetch('/api/bookings', {
+async function createBooking(payload: CreateBookingInput, scope: ClientPractitionerScope): Promise<Booking> {
+  const res = await fetch('/api/bookings', buildPractitionerScopedFetchInit(scope, {
     method: 'POST',
-    headers: withPractitionerHeaders(practitionerId, { 'Content-Type': 'application/json' }),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  })
+  }))
 
   if (!res.ok) {
     const data = await res.json().catch(() => null)
@@ -67,11 +66,10 @@ async function createBooking(payload: CreateBookingInput, practitionerId: string
   return res.json()
 }
 
-async function deleteBookingRequest(bookingId: string, practitionerId: string): Promise<void> {
-  const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}`, {
+async function deleteBookingRequest(bookingId: string, scope: ClientPractitionerScope): Promise<void> {
+  const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}`, buildPractitionerScopedFetchInit(scope, {
     method: 'DELETE',
-    headers: withPractitionerHeaders(practitionerId),
-  })
+  }))
 
   if (!res.ok) {
     const data = await res.json().catch(() => null)
@@ -79,12 +77,12 @@ async function deleteBookingRequest(bookingId: string, practitionerId: string): 
   }
 }
 
-async function patchBooking(bookingId: string, payload: PatchBookingInput, practitionerId: string): Promise<Booking> {
-  const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}`, {
+async function patchBooking(bookingId: string, payload: PatchBookingInput, scope: ClientPractitionerScope): Promise<Booking> {
+  const res = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}`, buildPractitionerScopedFetchInit(scope, {
     method: 'PATCH',
-    headers: withPractitionerHeaders(practitionerId, { 'Content-Type': 'application/json' }),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  })
+  }))
 
   if (!res.ok) {
     const data = await res.json().catch(() => null)
@@ -95,7 +93,9 @@ async function patchBooking(bookingId: string, payload: PatchBookingInput, pract
 }
 
 export function useBookings() {
-  const { practitionerId } = usePractitioner()
+  const practitioner = usePractitioner()
+  const { practitionerId, source, authLoading } = practitioner
+  const scope = useMemo(() => ({ practitionerId, source }), [practitionerId, source])
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -104,7 +104,8 @@ export function useBookings() {
     try {
       setLoading(true)
       setError(null)
-      const items = await fetchBookings(practitionerId)
+      if (authLoading) return []
+      const items = await fetchBookings(scope)
       setBookings(items)
       return items
     } catch (e: unknown) {
@@ -113,11 +114,11 @@ export function useBookings() {
     } finally {
       setLoading(false)
     }
-  }, [practitionerId])
+  }, [authLoading, scope])
 
   useEffect(() => {
-    refresh().catch(() => null)
-  }, [refresh])
+    if (!authLoading) refresh().catch(() => null)
+  }, [authLoading, refresh])
 
   useEffect(() => {
     const onChanged = () => {
@@ -143,7 +144,7 @@ export function useBookings() {
   const createBookingRecord = useCallback(async (payload: CreateBookingInput, options?: MutationOptions) => {
     try {
       setError(null)
-      const created = await createBooking(payload, practitionerId)
+      const created = await createBooking(payload, scope)
       prependBooking(created)
       emitBookingsChanged()
       return created
@@ -154,12 +155,12 @@ export function useBookings() {
       }
       return null
     }
-  }, [prependBooking, practitionerId])
+  }, [prependBooking, scope])
 
   const updateBookingStatus = useCallback(async (bookingId: string, status: BookingStatus) => {
     try {
       setError(null)
-      const updated = await patchBooking(bookingId, { status }, practitionerId)
+      const updated = await patchBooking(bookingId, { status }, scope)
       replaceBooking(updated)
       emitBookingsChanged()
       return updated
@@ -167,12 +168,12 @@ export function useBookings() {
       setError(getErrorMessage(e, 'Failed to update booking'))
       return null
     }
-  }, [replaceBooking, practitionerId])
+  }, [replaceBooking, scope])
 
   const patchBookingById = useCallback(async (bookingId: string, payload: PatchBookingInput, options?: MutationOptions) => {
     try {
       setError(null)
-      const updated = await patchBooking(bookingId, payload, practitionerId)
+      const updated = await patchBooking(bookingId, payload, scope)
       replaceBooking(updated)
       emitBookingsChanged()
       return updated
@@ -183,12 +184,12 @@ export function useBookings() {
       }
       return null
     }
-  }, [replaceBooking, practitionerId])
+  }, [replaceBooking, scope])
 
   const deleteBookingById = useCallback(async (bookingId: string) => {
     try {
       setError(null)
-      await deleteBookingRequest(bookingId, practitionerId)
+      await deleteBookingRequest(bookingId, scope)
       removeBooking(bookingId)
       emitBookingsChanged()
       return true
@@ -196,7 +197,7 @@ export function useBookings() {
       setError(getErrorMessage(e, 'Failed to delete booking'))
       return false
     }
-  }, [removeBooking, practitionerId])
+  }, [removeBooking, scope])
 
   return {
     practitionerId,

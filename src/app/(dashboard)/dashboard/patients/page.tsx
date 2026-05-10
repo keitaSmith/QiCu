@@ -30,7 +30,8 @@ import { usePatients } from '@/hooks/usePatients'
 import { useBookings } from '@/hooks/useBookings'
 import { useSessions } from '@/hooks/useSessions'
 import { useSnackbar } from '@/components/ui/Snackbar'
-import { withPractitionerHeaders } from '@/lib/practitioners'
+import { usePractitioner } from '@/components/layout/PractitionerContext'
+import { buildPractitionerScopedFetchInit } from '@/lib/auth/clientFetch'
 
 // Toggle this to inspect what's detected as "today"
 const DEBUG_TODAY = false
@@ -56,6 +57,7 @@ export default function PatientsPage() {
   const router = useRouter()
   const isDesktop = useIsDesktop()
   const { showSnackbar } = useSnackbar()
+  const practitionerScope = usePractitioner()
   const [q, setQ] = useState('')
   const [onlyToday, setOnlyToday] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
@@ -69,7 +71,6 @@ export default function PatientsPage() {
   }, [setRightPanelContent])
 
   const {
-    practitionerId,
     patients,
     loading,
     error,
@@ -193,7 +194,9 @@ function openArchivePatientDialog(p: FhirPatient) {
 async function archivePatientFromDialog(p: FhirPatient) {
   const res = await fetch(`/api/patients/${encodeURIComponent(p.id ?? '')}/archive`, {
     method: 'POST',
-    headers: withPractitionerHeaders(practitionerId, { 'Content-Type': 'application/json' }),
+    ...buildPractitionerScopedFetchInit(practitionerScope, {
+      headers: { 'Content-Type': 'application/json' },
+    }),
     body: JSON.stringify({ cancelFutureBookings: archiveFutureBookingChoice === 'cancel' }),
   })
   const data = await res.json().catch(() => null)
@@ -207,9 +210,10 @@ async function archivePatientFromDialog(p: FhirPatient) {
 }
 
 async function handleExportPatientData(p: FhirPatient) {
-  const res = await fetch(`/api/patients/${encodeURIComponent(p.id ?? '')}/export`, {
-    headers: withPractitionerHeaders(practitionerId),
-  })
+  const res = await fetch(
+    `/api/patients/${encodeURIComponent(p.id ?? '')}/export`,
+    buildPractitionerScopedFetchInit(practitionerScope),
+  )
   const data = await res.json().catch(() => null)
   if (!res.ok || !data) {
     showSnackbar({ variant: 'error', message: data?.error ?? 'Failed to export patient data.' })

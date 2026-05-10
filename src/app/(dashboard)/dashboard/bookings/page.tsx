@@ -39,12 +39,13 @@ import { TableSkeleton } from '@/components/ui/TableSkeleton'
 import { CardListSkeleton } from '@/components/ui/CardListSkeleton'
 import { useSnackbar } from '@/components/ui/Snackbar'
 import { buildBookingsExportCsv, buildServiceImportLookupKey, normalizePatientLookupKey, type BookingImportPreviewRow } from '@/lib/bookingsImportExport'
-import { withPractitionerHeaders } from '@/lib/practitioners'
+import { buildPractitionerScopedFetchInit } from '@/lib/auth/clientFetch'
 import * as PatientModel from '@/models/patient'
 import { toCoreView } from '@/models/patient.coreView'
 import { getErrorMessage } from '@/lib/errors'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { canUsePatientInActiveWorkflow } from '@/lib/patientWorkflow'
+import { usePractitioner } from '@/components/layout/PractitionerContext'
 
 type PatientOption = { id: string; name: string }
 type ViewMode = 'today' | 'upcoming' | 'past'
@@ -86,12 +87,12 @@ export default function BookingsPage() {
   const [upcomingPage, setUpcomingPage] = useState(1)
   const [pastPage, setPastPage] = useState(1)
   const { setRightPanelContent } = useRightPanel()
+  const practitionerScope = usePractitioner()
   const router = useRouter()
   const isDesktop = useIsDesktop()
   const { showSnackbar } = useSnackbar()
 
   const {
-    practitionerId,
     bookings,
     createBookingRecord,
     replaceBooking,
@@ -434,10 +435,10 @@ export default function BookingsPage() {
   async function handleGoogleReconcile() {
     try {
       setSyncingGoogle(true)
-      const res = await fetch('/api/integrations/google/reconcile', {
+      const res = await fetch('/api/integrations/google/reconcile', buildPractitionerScopedFetchInit(practitionerScope, {
         method: 'POST',
-        headers: withPractitionerHeaders(practitionerId, { 'Content-Type': 'application/json' }),
-      })
+        headers: { 'Content-Type': 'application/json' },
+      }))
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.error ?? 'Failed to sync linked Google bookings.')

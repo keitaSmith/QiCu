@@ -7,7 +7,7 @@ import { FilterSelect, type FilterOption } from '@/components/ui/FilterSelect'
 import { SearchField } from '@/components/ui/SearchField'
 import { usePractitioner } from '@/components/layout/PractitionerContext'
 import { useSnackbar } from '@/components/ui/Snackbar'
-import { withPractitionerHeaders } from '@/lib/practitioners'
+import { buildPractitionerScopedFetchInit } from '@/lib/auth/clientFetch'
 import { dateFmt } from '@/lib/dates'
 import {
   buildTrashRecoveryView,
@@ -76,7 +76,7 @@ function restoreTitle(recordType: TrashIndividualRecord['recordType']) {
 }
 
 export default function TrashPage() {
-  const { practitionerId } = usePractitioner()
+  const practitionerScope = usePractitioner()
   const { showSnackbar } = useSnackbar()
   const [trash, setTrash] = useState<TrashPayload>({ patients: [], bookings: [], sessions: [], services: [] })
   const [loading, setLoading] = useState(true)
@@ -88,14 +88,13 @@ export default function TrashPage() {
 
   const loadTrash = useCallback(async () => {
     setLoading(true)
-    const res = await fetch('/api/trash', {
+    const res = await fetch('/api/trash', buildPractitionerScopedFetchInit(practitionerScope, {
       cache: 'no-store',
-      headers: withPractitionerHeaders(practitionerId),
-    })
+    }))
     const data = await res.json()
     setTrash(data)
     setLoading(false)
-  }, [practitionerId])
+  }, [practitionerScope])
 
   useEffect(() => {
     loadTrash().catch(() => {
@@ -115,10 +114,9 @@ export default function TrashPage() {
   const hasFilteredResults = filteredView.patientGroups.length > 0 || filteredView.individualRecords.length > 0
 
   async function restoreDeletionGroup(deletionGroupId: string) {
-    const res = await fetch(`/api/trash/${encodeURIComponent(deletionGroupId)}/restore`, {
+    const res = await fetch(`/api/trash/${encodeURIComponent(deletionGroupId)}/restore`, buildPractitionerScopedFetchInit(practitionerScope, {
       method: 'POST',
-      headers: withPractitionerHeaders(practitionerId),
-    })
+    }))
     const data = await res.json().catch(() => null)
     if (!res.ok) {
       showSnackbar({ variant: 'error', message: data?.error ?? 'Failed to restore records.' })

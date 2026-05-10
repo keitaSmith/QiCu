@@ -74,7 +74,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 }
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
-  const { currentPractitioner, practitioners, setPractitionerId } = usePractitioner()
+  const { currentPractitioner, practitioners, setPractitionerId, isDemoMode } = usePractitioner()
   const { patients } = usePatients()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pathname = usePathname()
@@ -299,34 +299,55 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                     className="absolute right-0 z-50 mt-2.5 w-64 origin-top-right rounded-xl bg-surface py-2 shadow-lg outline-1 outline-ink/10 transition data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in"
                   >
                     <div className="px-3 pb-2 pt-1">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">Demo practitioners</p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">
+                        {isDemoMode ? 'Demo practitioners' : 'Signed-in practitioner'}
+                      </p>
                     </div>
-                    {practitioners.map((practitioner) => (
-                      <MenuItem key={practitioner.id}>
-                        <button
-                          type="button"
-                          onClick={() => setPractitionerId(practitioner.id)}
-                          className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-ink data-focus:bg-brand-300/10 data-focus:outline-hidden"
-                        >
-                          {practitioner.avatarUrl ? (
-                            <img alt={practitioner.name} src={practitioner.avatarUrl} className="size-9 rounded-full bg-canvas" />
-                          ) : practitioner.icon === 'sparkles' ? (
-                            <span className="flex size-9 items-center justify-center rounded-full bg-brand-700 text-surface">
-                              <SparklesIcon className="size-5" />
+                    {isDemoMode ? (
+                      practitioners.map((practitioner) => (
+                        <MenuItem key={practitioner.id}>
+                          <button
+                            type="button"
+                            onClick={() => setPractitionerId(practitioner.id)}
+                            className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-ink data-focus:bg-brand-300/10 data-focus:outline-hidden"
+                          >
+                            {practitioner.avatarUrl ? (
+                              <img alt={practitioner.name} src={practitioner.avatarUrl} className="size-9 rounded-full bg-canvas" />
+                            ) : practitioner.icon === 'sparkles' ? (
+                              <span className="flex size-9 items-center justify-center rounded-full bg-brand-700 text-surface">
+                                <SparklesIcon className="size-5" />
+                              </span>
+                            ) : (
+                              <UserCircleIcon className="size-9 text-brand-700" />
+                            )}
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-semibold">{practitioner.name}</span>
+                              <span className="block truncate text-xs text-ink/60">{practitioner.email}</span>
                             </span>
-                          ) : (
-                            <UserCircleIcon className="size-9 text-brand-700" />
-                          )}
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-semibold">{practitioner.name}</span>
-                            <span className="block truncate text-xs text-ink/60">{practitioner.email}</span>
+                            {practitioner.id === currentPractitioner.id && (
+                              <span className="rounded-full bg-brand-300/20 px-2 py-1 text-[11px] font-semibold text-brand-700">Active</span>
+                            )}
+                          </button>
+                        </MenuItem>
+                      ))
+                    ) : (
+                      <div className="flex items-center gap-3 px-3 py-2 text-sm text-ink">
+                        {currentPractitioner.avatarUrl ? (
+                          <img alt={currentPractitioner.name} src={currentPractitioner.avatarUrl} className="size-9 rounded-full bg-canvas" />
+                        ) : currentPractitioner.icon === 'sparkles' ? (
+                          <span className="flex size-9 items-center justify-center rounded-full bg-brand-700 text-surface">
+                            <SparklesIcon className="size-5" />
                           </span>
-                          {practitioner.id === currentPractitioner.id && (
-                            <span className="rounded-full bg-brand-300/20 px-2 py-1 text-[11px] font-semibold text-brand-700">Active</span>
-                          )}
-                        </button>
-                      </MenuItem>
-                    ))}
+                        ) : (
+                          <UserCircleIcon className="size-9 text-brand-700" />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-semibold">{currentPractitioner.name}</span>
+                          <span className="block truncate text-xs text-ink/60">{currentPractitioner.email}</span>
+                        </span>
+                        <span className="rounded-full bg-brand-300/20 px-2 py-1 text-[11px] font-semibold text-brand-700">Active</span>
+                      </div>
+                    )}
                   </MenuItems>
                 </Menu>
               </div>

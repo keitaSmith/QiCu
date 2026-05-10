@@ -267,6 +267,13 @@ Phase H.3 implementation note:
 - Representative strict-mode handling was wired into `/api/bookings` and `/api/integrations/google/auth-url`. The Google callback continues to rely on the DB-backed OAuth state created by auth-url.
 - Dashboard/client behavior is unchanged. `withPractitionerHeaders`, `PractitionerContext`, and manual practitioner selection remain until H.4. The legacy header fallback remains transitional and should be removed or locked down in H.5.
 
+Phase H.4 implementation note:
+
+- The dashboard/client practitioner context now loads `/api/auth/me` and uses the authenticated public practitioner as the current scope when a valid session exists.
+- Authenticated/session-mode dashboard fetches include cookies and omit `x-qicu-practitioner-id`; demo-mode fetches continue to send the legacy header for local development and existing tests.
+- Manual practitioner switching is now limited to demo mode. In session mode, the profile menu shows the authenticated practitioner identity without allowing arbitrary client-selected scope.
+- The legacy server header fallback remains for H.5, and no dashboard auth UI, middleware, business API response shape change, Google behavior change, or domain workflow change was added.
+
 ## Repository naming and responsibilities
 
 | Repository | Responsibility | Example methods | Current store/API equivalent |

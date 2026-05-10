@@ -486,3 +486,33 @@ Transition behavior:
 Representative strict-mode route handling was added for `/api/bookings` and `/api/integrations/google/auth-url`. The booking route demonstrates strict protected business-route behavior, and the Google auth-url route ensures OAuth state is created for the authenticated practitioner in strict mode. The Google callback route still consumes the DB-backed OAuth state and remains compatible.
 
 Later H.4/H.5 work should apply the strict-mode response wrapper consistently as the dashboard moves away from manual practitioner headers and the legacy fallback is removed or locked down.
+
+## Phase H.4 Implementation Note
+
+Phase H.4 moved the dashboard/client practitioner state toward authenticated session-derived scope while preserving the demo fallback.
+
+Client-side behavior:
+
+- `PractitionerContext` now loads `/api/auth/me` with credentials on mount.
+- When `/api/auth/me` returns an authenticated user with a linked practitioner, the context exposes that public practitioner as the current practitioner with `source: "session"`.
+- Session mode does not use the `qicu:current-practitioner-id` localStorage value as the source of truth, and arbitrary practitioner switching is disabled.
+- When no authenticated practitioner is available, the context remains in `source: "demo"` mode and preserves the existing demo practitioner switcher plus localStorage behavior.
+
+Fetch behavior:
+
+- `src/lib/auth/clientFetch.ts` centralizes auth-aware dashboard fetch options.
+- Session-mode dashboard/API calls include cookies and omit `x-qicu-practitioner-id`.
+- Demo-mode dashboard/API calls still include the legacy `x-qicu-practitioner-id` header for local development, existing tests, and transition compatibility.
+
+Dashboard behavior:
+
+- The profile menu shows the authenticated practitioner as a non-switchable identity in session mode.
+- The existing practitioner switcher remains available only in demo mode.
+
+Current limitations:
+
+- Server-side support for `x-qicu-practitioner-id` remains in place for H.5.
+- Dashboard auth UI, login redirects, broad middleware enforcement, and full strict-mode route wrapper cleanup were not added in H.4.
+- Business/domain API response shapes, Google OAuth/token behavior, and booking/session/patient/service/lifecycle behavior remain unchanged.
+
+Next phase H.5 should remove or lock down the remaining header fallback and apply strict-mode auth error handling consistently across protected server routes.

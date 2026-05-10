@@ -14,7 +14,7 @@ import RadioField from '@/components/ui/RadioField'
 import SearchableSelectField, { type SearchableSelectOption } from '@/components/ui/SearchableSelectField'
 import { useServices } from '@/hooks/useServices'
 import { usePractitioner } from '@/components/layout/PractitionerContext'
-import { withPractitionerHeaders } from '@/lib/practitioners'
+import { buildPractitionerScopedFetchInit } from '@/lib/auth/clientFetch'
 import { getErrorMessage } from '@/lib/errors'
 
 type PatientOption = { id: string; name: string }
@@ -63,7 +63,7 @@ export function SessionDialog({
   onUpdated,
 }: SessionDialogProps) {
   const { showSnackbar } = useSnackbar()
-  const { practitionerId } = usePractitioner()
+  const practitionerScope = usePractitioner()
   const { services } = useServices()
   const isEdit = mode === 'edit' && !!session
 
@@ -243,11 +243,11 @@ export function SessionDialog({
         : `/api/patients/${encodeURIComponent(effectivePatientId)}/sessions`
       const method: 'POST' | 'PATCH' = isEdit && session ? 'PATCH' : 'POST'
 
-      const res = await fetch(endpoint, {
+      const res = await fetch(endpoint, buildPractitionerScopedFetchInit(practitionerScope, {
         method,
-        headers: withPractitionerHeaders(practitionerId, { 'Content-Type': 'application/json' }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      })
+      }))
 
       if (!res.ok) {
         const data = await res.json().catch(() => null)

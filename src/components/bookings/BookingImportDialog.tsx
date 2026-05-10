@@ -23,7 +23,7 @@ import { DateField } from '@/components/ui/DateField'
 import { LongCardSkeleton } from '@/components/ui/LongCardSkeleton'
 import SelectField, { type SelectOption } from '@/components/ui/SelectField'
 import SearchableSelectField, { type SearchableSelectOption } from '@/components/ui/SearchableSelectField'
-import { withPractitionerHeaders } from '@/lib/practitioners'
+import { buildPractitionerScopedFetchInit } from '@/lib/auth/clientFetch'
 import { getErrorMessage } from '@/lib/errors'
 
 type GoogleStatus = {
@@ -155,7 +155,7 @@ export function BookingImportDialog({
   services,
   onImportRows,
 }: BookingImportDialogProps) {
-  const { practitionerId } = usePractitioner()
+  const practitionerScope = usePractitioner()
   const [sourceTab, setSourceTab] = useState<SourceTab>('csv')
   const [fileName, setFileName] = useState('')
   const [previewRows, setPreviewRows] = useState<BookingImportPreviewRow[]>([])
@@ -295,10 +295,9 @@ export function BookingImportDialog({
   }, [isGooglePreview, selectedGoogleRows])
 
   const loadGoogleStatus = useCallback(async () => {
-    const res = await fetch('/api/integrations/google/status', {
+    const res = await fetch('/api/integrations/google/status', buildPractitionerScopedFetchInit(practitionerScope, {
       cache: 'no-store',
-      headers: withPractitionerHeaders(practitionerId),
-    })
+    }))
 
     const data = (await res.json()) as GoogleStatus & { error?: string }
     if (!res.ok) {
@@ -308,13 +307,12 @@ export function BookingImportDialog({
     setGoogleStatus(data)
     setGoogleSelectedCalendarId(data.selectedCalendarId ?? '')
     return data
-  }, [practitionerId])
+  }, [practitionerScope])
 
   const loadGoogleCalendars = useCallback(async () => {
-    const res = await fetch('/api/integrations/google/calendars', {
+    const res = await fetch('/api/integrations/google/calendars', buildPractitionerScopedFetchInit(practitionerScope, {
       cache: 'no-store',
-      headers: withPractitionerHeaders(practitionerId),
-    })
+    }))
 
     const data = (await res.json()) as { calendars?: GoogleCalendarOption[]; error?: string }
     if (!res.ok) {
@@ -325,7 +323,7 @@ export function BookingImportDialog({
     setGoogleCalendars(calendars)
     setGoogleSelectedCalendarId(prev => prev || calendars[0]?.id || '')
     return calendars
-  }, [practitionerId])
+  }, [practitionerScope])
 
   useEffect(() => {
     if (!open || sourceTab !== 'google') return
@@ -431,9 +429,10 @@ export function BookingImportDialog({
       setGoogleLoading(true)
       setError(null)
 
-      const res = await fetch('/api/integrations/google/auth-url', {
-        headers: withPractitionerHeaders(practitionerId),
-      })
+      const res = await fetch(
+        '/api/integrations/google/auth-url',
+        buildPractitionerScopedFetchInit(practitionerScope),
+      )
       const data = (await res.json()) as { url?: string; error?: string }
       if (!res.ok || !data.url) {
         throw new Error(data.error ?? 'Could not start Google Calendar connection')
@@ -500,10 +499,9 @@ export function BookingImportDialog({
       setGoogleLoading(true)
       setError(null)
 
-      const res = await fetch('/api/integrations/google/disconnect', {
+      const res = await fetch('/api/integrations/google/disconnect', buildPractitionerScopedFetchInit(practitionerScope, {
         method: 'POST',
-        headers: withPractitionerHeaders(practitionerId),
-      })
+      }))
       if (!res.ok) {
         throw new Error('Failed to disconnect Google Calendar')
       }
@@ -526,14 +524,14 @@ export function BookingImportDialog({
 
     const calendar = googleCalendars.find(item => item.id === calendarId)
 
-    const res = await fetch('/api/integrations/google/calendar-selection', {
+    const res = await fetch('/api/integrations/google/calendar-selection', buildPractitionerScopedFetchInit(practitionerScope, {
       method: 'POST',
-      headers: withPractitionerHeaders(practitionerId, { 'Content-Type': 'application/json' }),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         calendarId,
         calendarName: calendar?.summary,
       }),
-    })
+    }))
 
     const data = await res.json().catch(() => null)
     if (!res.ok) {
@@ -571,10 +569,9 @@ export function BookingImportDialog({
         mode: googleImportMode,
       })
 
-      const res = await fetch(`/api/integrations/google/events-preview?${query.toString()}`, {
+      const res = await fetch(`/api/integrations/google/events-preview?${query.toString()}`, buildPractitionerScopedFetchInit(practitionerScope, {
         cache: 'no-store',
-        headers: withPractitionerHeaders(practitionerId),
-      })
+      }))
 
       const data = (await res.json()) as { rows?: GoogleBookingImportPreviewRow[]; error?: string }
       if (!res.ok) {

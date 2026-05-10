@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { Session } from '@/models/session'
 import { SESSIONS_CHANGED_EVENT, emitSessionsChanged } from '@/lib/session-events'
 import { usePractitioner } from '@/components/layout/PractitionerContext'
-import { withPractitionerHeaders } from '@/lib/practitioners'
+import { buildPractitionerScopedFetchInit, type ClientPractitionerScope } from '@/lib/auth/clientFetch'
 import { getErrorMessage } from '@/lib/errors'
 
 type SessionMutationInput = {
@@ -25,17 +25,17 @@ async function parseJsonSafely(res: Response) {
   }
 }
 
-async function fetchSessions(practitionerId: string): Promise<Session[]> {
-  const res = await fetch('/api/sessions', {
+async function fetchSessions(scope: ClientPractitionerScope): Promise<Session[]> {
+  const res = await fetch('/api/sessions', buildPractitionerScopedFetchInit(scope, {
     cache: 'no-store',
-    headers: withPractitionerHeaders(practitionerId),
-  })
+  }))
   if (!res.ok) throw new Error('Failed to load sessions')
   return res.json()
 }
 
 export function useSessions() {
-  const { practitionerId } = usePractitioner()
+  const { practitionerId, source, authLoading } = usePractitioner()
+  const scope = useMemo(() => ({ practitionerId, source }), [practitionerId, source])
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -44,7 +44,8 @@ export function useSessions() {
     try {
       setLoading(true)
       setError(null)
-      const items = await fetchSessions(practitionerId)
+      if (authLoading) return []
+      const items = await fetchSessions(scope)
       setSessions(items)
       return items
     } catch (e: unknown) {
@@ -53,11 +54,11 @@ export function useSessions() {
     } finally {
       setLoading(false)
     }
-  }, [practitionerId])
+  }, [authLoading, scope])
 
   useEffect(() => {
-    refresh().catch(() => null)
-  }, [refresh])
+    if (!authLoading) refresh().catch(() => null)
+  }, [authLoading, refresh])
 
   useEffect(() => {
     const onChanged = () => {
@@ -69,11 +70,11 @@ export function useSessions() {
 
   const updateSessionRecord = useCallback(
     async (sessionId: string, input: SessionMutationInput) => {
-      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, buildPractitionerScopedFetchInit(scope, {
         method: 'PATCH',
-        headers: withPractitionerHeaders(practitionerId, { 'Content-Type': 'application/json' }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
-      })
+      }))
 
       const data = await parseJsonSafely(res)
       if (!res.ok) {
@@ -83,14 +84,13 @@ export function useSessions() {
       emitSessionsChanged()
       return data as Session
     },
-    [practitionerId],
+    [scope],
   )
 
   const deleteSessionRecord = useCallback(async (sessionId: string) => {
-    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, buildPractitionerScopedFetchInit(scope, {
       method: 'DELETE',
-      headers: withPractitionerHeaders(practitionerId),
-    })
+    }))
 
     const data = await parseJsonSafely(res)
     if (!res.ok) {
@@ -98,7 +98,7 @@ export function useSessions() {
     }
 
     emitSessionsChanged()
-  }, [practitionerId])
+  }, [scope])
 
   return {
     practitionerId,

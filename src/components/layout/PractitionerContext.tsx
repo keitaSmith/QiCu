@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   DEFAULT_PRACTITIONER_ID,
   DEMO_PRACTITIONERS,
@@ -14,21 +14,77 @@ type PractitionerContextValue = {
   currentPractitioner: Practitioner
   practitioners: Practitioner[]
   setPractitionerId: (value: string) => void
+  source: 'session' | 'demo'
+  isAuthenticated: boolean
+  isDemoMode: boolean
+  authLoading: boolean
 }
 
 const PractitionerContext = createContext<PractitionerContextValue | null>(null)
 
 export function PractitionerProvider({ children }: { children: ReactNode }) {
   const [practitionerId, setPractitionerIdState] = useState(DEFAULT_PRACTITIONER_ID)
+  const [sessionPractitioner, setSessionPractitioner] = useState<Practitioner | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
 
   useEffect(() => {
-    const saved = typeof window !== 'undefined' ? window.localStorage.getItem(STORAGE_KEY) : null
-    if (saved && DEMO_PRACTITIONERS.some(practitioner => practitioner.id === saved)) {
-      setPractitionerIdState(saved)
+    let cancelled = false
+
+    async function loadAuthState() {
+      let hasSessionPractitioner = false
+      try {
+        const response = await fetch('/api/auth/me', {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        const data = await response.json().catch(() => null)
+        const practitioner = data?.authenticated && data?.practitioner?.id
+          ? {
+              id: data.practitioner.id,
+              name: data.practitioner.name ?? data.practitioner.id,
+              email: data.user?.email ?? '',
+              initials: (data.practitioner.name ?? data.practitioner.id)
+                .split(/\s+/)
+                .filter(Boolean)
+                .map((part: string) => part[0])
+                .join('')
+                .slice(0, 2)
+                .toUpperCase(),
+            }
+          : null
+
+        if (cancelled) return
+
+        if (practitioner) {
+          hasSessionPractitioner = true
+          setSessionPractitioner(practitioner)
+          setPractitionerIdState(practitioner.id)
+          return
+        }
+      } finally {
+        if (!cancelled) {
+          if (!hasSessionPractitioner) {
+            const saved = typeof window !== 'undefined' ? window.localStorage.getItem(STORAGE_KEY) : null
+            if (saved && DEMO_PRACTITIONERS.some(practitioner => practitioner.id === saved)) {
+              setPractitionerIdState(saved)
+            }
+          }
+          setAuthLoading(false)
+        }
+      }
+    }
+
+    loadAuthState().catch(() => {
+      if (!cancelled) setAuthLoading(false)
+    })
+
+    return () => {
+      cancelled = true
     }
   }, [])
 
-  const setPractitionerId = (value: string) => {
+  const setPractitionerId = useCallback((value: string) => {
+    if (sessionPractitioner) return
     const next = DEMO_PRACTITIONERS.some(practitioner => practitioner.id === value)
       ? value
       : DEFAULT_PRACTITIONER_ID
@@ -36,21 +92,27 @@ export function PractitionerProvider({ children }: { children: ReactNode }) {
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(STORAGE_KEY, next)
     }
-  }
+  }, [sessionPractitioner])
 
   const currentPractitioner = useMemo(
-    () => DEMO_PRACTITIONERS.find(practitioner => practitioner.id === practitionerId) ?? DEMO_PRACTITIONERS[0],
-    [practitionerId],
+    () => sessionPractitioner ?? DEMO_PRACTITIONERS.find(practitioner => practitioner.id === practitionerId) ?? DEMO_PRACTITIONERS[0],
+    [practitionerId, sessionPractitioner],
   )
+
+  const source: PractitionerContextValue['source'] = sessionPractitioner ? 'session' : 'demo'
 
   const value = useMemo(
     () => ({
       practitionerId,
       currentPractitioner,
-      practitioners: DEMO_PRACTITIONERS,
+      practitioners: sessionPractitioner ? [sessionPractitioner] : DEMO_PRACTITIONERS,
       setPractitionerId,
+      source,
+      isAuthenticated: Boolean(sessionPractitioner),
+      isDemoMode: !sessionPractitioner,
+      authLoading,
     }),
-    [practitionerId, currentPractitioner],
+    [authLoading, practitionerId, currentPractitioner, sessionPractitioner, setPractitionerId, source],
   )
 
   return <PractitionerContext.Provider value={value}>{children}</PractitionerContext.Provider>

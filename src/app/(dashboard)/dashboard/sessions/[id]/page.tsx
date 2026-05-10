@@ -7,13 +7,13 @@ import { SessionDetailPanel } from '@/components/sessions/SessionDetailPanel'
 import { displayName } from '@/models/patient'
 import { usePatients } from '@/hooks/usePatients'
 import { usePractitioner } from '@/components/layout/PractitionerContext'
-import { withPractitionerHeaders } from '@/lib/practitioners'
+import { buildPractitionerScopedFetchInit } from '@/lib/auth/clientFetch'
 
 export default function SessionDetailPage() {
   const router = useRouter()
   const { id } = useParams<{ id: string }>()
   const { patients } = usePatients()
-  const { practitionerId } = usePractitioner()
+  const practitionerScope = usePractitioner()
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -21,9 +21,10 @@ export default function SessionDetailPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/sessions/${id}`, {
-          headers: withPractitionerHeaders(practitionerId),
-        })
+        const res = await fetch(
+          `/api/sessions/${id}`,
+          buildPractitionerScopedFetchInit(practitionerScope),
+        )
         if (!res.ok) throw new Error('Not found')
         const data: Session = await res.json()
         setSession(data)
@@ -34,7 +35,7 @@ export default function SessionDetailPage() {
       }
     }
     load()
-  }, [id, practitionerId])
+  }, [id, practitionerScope])
 
   const patientName = useMemo(() => {
     const patient = patients.find(p => p.id === session?.patientId)
