@@ -418,3 +418,34 @@ Low-level helpers were added:
 Current app behavior is unchanged. H.1 did not add login/logout routes, cookies, middleware enforcement, dashboard auth UI, or changes to `getPractitionerIdFromRequest`. The transition `x-qicu-practitioner-id` header remains the current route scoping mechanism until a later Phase H step replaces it with auth-derived practitioner scope.
 
 No real users, passwords, credentials, or session tokens are seeded. Future H.2 should implement login/logout/session cookie behavior using these helpers.
+
+## Phase H.2 Implementation Note
+
+Phase H.2 added the runtime login/logout/session-cookie foundation without protecting existing business routes yet.
+
+Added auth route behavior:
+
+- `POST /api/auth/login`
+  - Accepts email/password JSON.
+  - Normalizes email by trimming and lowercasing.
+  - Verifies credentials through `authRepository` and the bcrypt password helper.
+  - Creates an opaque session token and stores only its SHA-256 hash in `auth_sessions`.
+  - Sets a `qicu_session` cookie with `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` in production.
+  - Returns only safe user fields: email and name.
+- `POST /api/auth/logout`
+  - Reads the session cookie if present.
+  - Revokes the matching hashed session.
+  - Clears the cookie.
+  - Returns `{ ok: true }` even when no session exists.
+- `GET /api/auth/me`
+  - Reads and validates the session cookie.
+  - Returns `{ authenticated: false }` for anonymous requests.
+  - Returns safe user state, and a public practitioner shape only when one can be resolved safely.
+
+Session cookies contain only the opaque plaintext session token. They do not contain user IDs, practitioner IDs, database UUIDs, email, or claims. Password hashes, session token hashes, plaintext session tokens, and database UUIDs are not returned publicly.
+
+Login/logout POST routes include a small same-origin guard that rejects requests with an `Origin` header that does not match the request origin. This is not a full CSRF token system; later auth enforcement phases should revisit CSRF/origin protection for all cookie-authenticated mutating routes.
+
+Current domain behavior remains unchanged. H.2 did not enforce auth on patients, bookings, sessions, services, lifecycle/Trash, Google, or export routes. `getPractitionerIdFromRequest`, `x-qicu-practitioner-id`, dashboard practitioner context, Google OAuth/encrypted token behavior, and existing API response shapes remain unchanged. No real credentials are seeded.
+
+Next phase H.3 should derive practitioner scope from authenticated sessions in server routes while preserving response shapes and adding clear unauthenticated/unauthorized behavior.

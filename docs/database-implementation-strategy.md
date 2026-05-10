@@ -249,6 +249,15 @@ Phase H.1 implementation note:
 - Added low-level password, session-token, and internal auth repository helpers for future login/logout work.
 - No login/logout routes, cookies, middleware enforcement, dashboard auth UI, API behavior changes, Google changes, or `x-qicu-practitioner-id` changes were added in H.1.
 
+Phase H.2 implementation note:
+
+- Added `POST /api/auth/login`, `POST /api/auth/logout`, and `GET /api/auth/me` as the first runtime auth/session-cookie foundation.
+- Login verifies bcrypt password credentials, creates an opaque session token, stores only the SHA-256 token hash in `auth_sessions`, and sets a secure HttpOnly `qicu_session` cookie.
+- Logout revokes the hashed session when present and clears the cookie while returning `{ ok: true }`.
+- `/api/auth/me` returns safe public auth state only: authenticated flag, user email/name, and a public practitioner shape when safely resolvable. It does not expose DB UUIDs, password hashes, session token hashes, or cookie values.
+- Login/logout POST routes reject clearly cross-origin requests when an `Origin` header does not match the request origin.
+- Existing business/domain routes are not protected yet, and `getPractitionerIdFromRequest`, `x-qicu-practitioner-id`, dashboard practitioner context, Google behavior, and existing API response shapes remain unchanged until later Phase H steps.
+
 ## Repository naming and responsibilities
 
 | Repository | Responsibility | Example methods | Current store/API equivalent |
