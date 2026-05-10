@@ -509,3 +509,11 @@ Phase F.3 moved individual booking, session, and service Trash delete/restore wr
 Booking Trash delete preserves current relationship behavior by unlinking active linked sessions without deleting session records. Session Trash delete preserves the database canonical `sessions.booking_id` relationship on the trashed session row while clearing the transitional runtime booking/session link where current behavior expects it. Service Trash delete remains separate from service disable, and restoring a service does not change its disabled/active state.
 
 The DB-backed Trash read model can now reconstruct individual booking/session/service recovery items after restart. Patient-data grouped children remain suppressed from top-level individual records. Purge remains deferred to Phase F.4, patient export remains deferred to Phase F.5, and Google integration remains in-memory.
+
+## Implementation note: Phase F.4 DB-backed purge helper
+
+Phase F.4 moved `purgeExpiredTrash` to a Drizzle-backed helper/admin operation when PostgreSQL is available. No scheduler, cron, dashboard UI, public route, or destructive reset script was added.
+
+The purge helper permanently removes only expired Trash records whose deletion group restore window has passed. Patient-data groups are purged atomically in foreign-key-safe order: grouped sessions, grouped bookings, grouped patient, then the deletion group. Individual booking, session, and service groups are purged independently after their child restore windows are verified as expired.
+
+Deletion groups are removed only after their child records are purged, and expired orphan deletion groups are cleaned up. Service purge preserves historical booking/session snapshots because service references are nullable while snapshot names/durations remain on historical rows. Public IDs remain stable for remaining records, and DB UUIDs stay internal. Patient export remains the main Phase F.5 follow-up.

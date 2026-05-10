@@ -313,3 +313,15 @@ Individual session delete now creates a persisted `deletion_groups` row with del
 Individual service delete now creates a persisted `deletion_groups` row with deletion type `service` and sets service Trash metadata transactionally. Service disable remains separate from service Trash delete, and restoring a service does not change its active/disabled state. Historical booking/session service snapshots remain readable.
 
 The Phase F.1 Trash read model can reconstruct individual booking, session, and service recovery items from persisted DB state after restart. Patient-data grouped children continue to be suppressed from top-level individual Trash records. Purge remains deferred to Phase F.4, and fully DB-backed lifecycle-aware export remains deferred to Phase F.5 unless current behavior already satisfies the workflow.
+
+## Implementation Note: Phase F.4
+
+Phase F.4 moved `purgeExpiredTrash` into a Drizzle/PostgreSQL-backed helper when the database is available. Purge remains a callable helper/admin operation only; no scheduler, cron job, route, or dashboard UI was added.
+
+The DB purge helper only considers `deletion_groups` whose `restore_until` is before the supplied `now` value. Records with future or null restore windows are left untouched, and archived-only records are not purged because archive does not create Trash metadata or deletion groups.
+
+Expired patient-data groups are purged atomically by deleting grouped sessions first, then grouped bookings, then the grouped patient, and finally the `deletion_groups` row. The helper verifies every grouped child row is expired before purging so mixed restore-window groups are skipped rather than partially removed.
+
+Expired individual booking, session, and service groups are purged one group at a time. Booking purge deletes only the expired trashed booking and relies on the nullable session booking foreign key to preserve session records. Session purge deletes only the expired trashed session. Service purge hard-deletes the expired trashed service; booking and session `service_id` references are nullable and use `on delete set null`, while service snapshot fields remain on historical bookings and sessions.
+
+Successful purge deletes the corresponding `deletion_groups` row after child records are removed. Orphaned expired deletion groups with no child records are cleaned up. Public IDs remain stable for non-purged records, and DB UUIDs are not exposed by the helper summary. Non-production/test fallback still uses the existing in-memory purge behavior when needed. Patient export remains deferred to Phase F.5 unless current behavior already satisfies the workflow.

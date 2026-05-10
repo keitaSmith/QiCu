@@ -209,7 +209,7 @@ test('purgeExpiredTrash removes expired records and keeps records inside restore
   await movePatientGraphToTrash(practitionerId, expiredPatient.id, { now: new Date('2026-04-01T12:00:00.000Z') })
   await movePatientGraphToTrash(practitionerId, retainedPatient.id, { now: new Date('2026-05-01T12:00:00.000Z') })
 
-  const removed = purgeExpiredTrash({ now: new Date('2026-05-04T12:00:00.000Z') })
+  const removed = await purgeExpiredTrash({ now: new Date('2026-05-04T12:00:00.000Z') })
 
   assert.equal(removed.patients, 1)
   assert.equal(patientsStore.some(patient => patient.id === expiredPatient.id), false)

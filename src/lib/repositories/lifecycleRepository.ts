@@ -37,7 +37,7 @@ import * as patientsRepository from '@/lib/repositories/patientsRepository'
 import { patientsStore } from '@/data/patientsStore'
 import { getPatientPractitionerId, patientBelongsToPractitioner } from '@/lib/practitioners'
 import type { TrashMetadata } from '@/models/lifecycle'
-import { and, eq, inArray, isNull, or } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm'
 
 const RESTORE_WINDOW_DAYS = 30
 
@@ -145,6 +145,12 @@ async function runWithFallback<T>(query: () => Promise<T>, fallback: () => Promi
     if (process.env.NODE_ENV === 'production') throw error
     return fallback()
   }
+}
+
+function isTestRuntime() {
+  return process.env.NODE_ENV === 'test' ||
+    process.env.npm_lifecycle_event === 'test' ||
+    Boolean(process.env.NODE_TEST_CONTEXT)
 }
 
 function restoreUntilFrom(deletedAt: Date) {
@@ -316,6 +322,49 @@ function clearRuntimeBookingSessionLink(practitionerId: string, sessionRow: Sess
       booking.sessionId = undefined
     }
   }
+}
+
+function removeRuntimePatient(practitionerId: string, patientRow: PatientRow) {
+  const publicId = publicPatientIdForRow(patientRow)
+  for (let index = patientsStore.length - 1; index >= 0; index -= 1) {
+    if (
+      patientsStore[index].id === publicId &&
+      getPatientPractitionerId(patientsStore[index]) === practitionerId
+    ) {
+      patientsStore.splice(index, 1)
+    }
+  }
+}
+
+function removeRuntimeBooking(practitionerId: string, bookingRow: BookingRow) {
+  const publicId = publicBookingIdForRow(bookingRow)
+  for (let index = BOOKINGS.length - 1; index >= 0; index -= 1) {
+    if (BOOKINGS[index].id === publicId && BOOKINGS[index].practitionerId === practitionerId) {
+      BOOKINGS.splice(index, 1)
+    }
+  }
+}
+
+function removeRuntimeSession(practitionerId: string, sessionRow: SessionRow) {
+  const publicId = publicSessionIdForRow(sessionRow)
+  for (let index = sessionsStore.length - 1; index >= 0; index -= 1) {
+    if (sessionsStore[index].id === publicId && sessionsStore[index].practitionerId === practitionerId) {
+      sessionsStore.splice(index, 1)
+    }
+  }
+}
+
+function removeRuntimeService(practitionerId: string, serviceRow: ServiceRow) {
+  const publicId = publicServiceIdForRow(serviceRow)
+  for (let index = servicesStore.length - 1; index >= 0; index -= 1) {
+    if (servicesStore[index].id === publicId && servicesStore[index].practitionerId === practitionerId) {
+      servicesStore.splice(index, 1)
+    }
+  }
+}
+
+function allRowsExpired(rows: Array<{ restoreUntil: Date | null }>, now: Date) {
+  return rows.every(row => row.restoreUntil && row.restoreUntil.getTime() < now.getTime())
 }
 
 async function fallbackArchivePatient(
@@ -1204,8 +1253,174 @@ export async function restoreDeletionGroup(
   )
 }
 
-export function purgeExpiredTrash(options: { now?: Date } = {}) {
-  return purgeExpiredTrashInMemory(options.now)
+export async function purgeExpiredTrash(options: { now?: Date; practitionerId?: string } = {}) {
+  if (isTestRuntime()) return purgeExpiredTrashInMemory(options.now)
+
+  const dbPractitionerId = options.practitionerId
+    ? databasePractitionerId(options.practitionerId)
+    : undefined
+  if (options.practitionerId && !dbPractitionerId) {
+    return purgeExpiredTrashInMemory(options.now)
+  }
+
+  return runWithFallback(
+    async () => {
+      const now = options.now ?? new Date()
+      const purgedRuntime = {
+        patients: [] as PatientRow[],
+        bookings: [] as BookingRow[],
+        sessions: [] as SessionRow[],
+        services: [] as ServiceRow[],
+      }
+
+      const counts = await drizzleDb.transaction(async tx => {
+        const groupConditions = [lt(deletionGroups.restoreUntil, now)]
+        if (dbPractitionerId) groupConditions.push(eq(deletionGroups.practitionerId, dbPractitionerId))
+
+        const expiredGroups = await tx
+          .select()
+          .from(deletionGroups)
+          .where(and(...groupConditions))
+
+        const removed = { patients: 0, bookings: 0, sessions: 0, services: 0 }
+
+        for (const group of expiredGroups) {
+          const patientRows = await tx
+            .select()
+            .from(patients)
+            .where(
+              and(
+                eq(patients.practitionerId, group.practitionerId),
+                eq(patients.deletionGroupId, group.id),
+              ),
+            )
+          const bookingRows = await tx
+            .select()
+            .from(bookings)
+            .where(
+              and(
+                eq(bookings.practitionerId, group.practitionerId),
+                eq(bookings.deletionGroupId, group.id),
+              ),
+            )
+          const sessionRows = await tx
+            .select()
+            .from(sessions)
+            .where(
+              and(
+                eq(sessions.practitionerId, group.practitionerId),
+                eq(sessions.deletionGroupId, group.id),
+              ),
+            )
+          const serviceRows = await tx
+            .select()
+            .from(servicesTable)
+            .where(
+              and(
+                eq(servicesTable.practitionerId, group.practitionerId),
+                eq(servicesTable.deletionGroupId, group.id),
+              ),
+            )
+
+          if (group.deletionType === 'patient-data') {
+            const groupRows = [...patientRows, ...bookingRows, ...sessionRows]
+            if (groupRows.length === 0) {
+              await tx.delete(deletionGroups).where(eq(deletionGroups.id, group.id))
+              continue
+            }
+            if (!allRowsExpired(groupRows, now)) continue
+
+            if (sessionRows.length > 0) {
+              await tx.delete(sessions).where(inArray(sessions.id, sessionRows.map(session => session.id)))
+            }
+            if (bookingRows.length > 0) {
+              await tx.delete(bookings).where(inArray(bookings.id, bookingRows.map(booking => booking.id)))
+            }
+            if (patientRows.length > 0) {
+              await tx.delete(patients).where(inArray(patients.id, patientRows.map(patient => patient.id)))
+            }
+            await tx.delete(deletionGroups).where(eq(deletionGroups.id, group.id))
+
+            removed.patients += patientRows.length
+            removed.bookings += bookingRows.length
+            removed.sessions += sessionRows.length
+            purgedRuntime.patients.push(...patientRows)
+            purgedRuntime.bookings.push(...bookingRows)
+            purgedRuntime.sessions.push(...sessionRows)
+            continue
+          }
+
+          if (group.deletionType === 'booking') {
+            if (bookingRows.length === 0) {
+              await tx.delete(deletionGroups).where(eq(deletionGroups.id, group.id))
+              continue
+            }
+            if (!allRowsExpired(bookingRows, now)) continue
+
+            await tx.delete(bookings).where(inArray(bookings.id, bookingRows.map(booking => booking.id)))
+            await tx.delete(deletionGroups).where(eq(deletionGroups.id, group.id))
+
+            removed.bookings += bookingRows.length
+            purgedRuntime.bookings.push(...bookingRows)
+            continue
+          }
+
+          if (group.deletionType === 'session') {
+            if (sessionRows.length === 0) {
+              await tx.delete(deletionGroups).where(eq(deletionGroups.id, group.id))
+              continue
+            }
+            if (!allRowsExpired(sessionRows, now)) continue
+
+            await tx.delete(sessions).where(inArray(sessions.id, sessionRows.map(session => session.id)))
+            await tx.delete(deletionGroups).where(eq(deletionGroups.id, group.id))
+
+            removed.sessions += sessionRows.length
+            purgedRuntime.sessions.push(...sessionRows)
+            continue
+          }
+
+          if (group.deletionType === 'service') {
+            if (serviceRows.length === 0) {
+              await tx.delete(deletionGroups).where(eq(deletionGroups.id, group.id))
+              continue
+            }
+            if (!allRowsExpired(serviceRows, now)) continue
+
+            await tx
+              .delete(servicesTable)
+              .where(inArray(servicesTable.id, serviceRows.map(service => service.id)))
+            await tx.delete(deletionGroups).where(eq(deletionGroups.id, group.id))
+
+            removed.services += serviceRows.length
+            purgedRuntime.services.push(...serviceRows)
+          }
+        }
+
+        return removed
+      })
+
+      const databasePractitionerIdToPublicId = Object.fromEntries(
+        Object.entries(databasePractitionerIdByPublicId).map(([publicId, databaseId]) => [databaseId, publicId]),
+      ) as Record<string, string>
+
+      for (const patient of purgedRuntime.patients) {
+        removeRuntimePatient(databasePractitionerIdToPublicId[patient.practitionerId] ?? patient.practitionerId, patient)
+      }
+      for (const booking of purgedRuntime.bookings) {
+        removeRuntimeBooking(databasePractitionerIdToPublicId[booking.practitionerId] ?? booking.practitionerId, booking)
+      }
+      for (const session of purgedRuntime.sessions) {
+        removeRuntimeSession(databasePractitionerIdToPublicId[session.practitionerId] ?? session.practitionerId, session)
+      }
+      for (const service of purgedRuntime.services) {
+        removeRuntimeService(databasePractitionerIdToPublicId[service.practitionerId] ?? service.practitionerId, service)
+      }
+
+      return counts
+    },
+    () => purgeExpiredTrashInMemory(options.now),
+  )
 }
 
 export async function buildPatientExport(practitionerId: string, patientId: string) {
