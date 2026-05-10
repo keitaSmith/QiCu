@@ -1,5 +1,5 @@
 ﻿import assert from 'node:assert/strict'
-import test from 'node:test'
+import { after, before, test } from 'node:test'
 
 import { NextRequest } from 'next/server'
 
@@ -8,11 +8,34 @@ import { patientsStore } from '@/data/patientsStore'
 import { servicesStore } from '@/data/servicesStore'
 import { isTrashed } from '@/lib/dataLifecycle'
 import { disconnectGoogleIntegration, saveGoogleIntegration } from '@/lib/google/store'
-import { DELETE, PATCH } from './[bookingId]/route'
-import { POST } from './route'
-import { POST as POST_PATIENT_BOOKING } from '../patients/[patientId]/bookings/route'
+import { disableDatabaseForRouteUnitTest } from '@/test/disableDatabaseForRouteUnitTest'
 import type { Booking } from '@/models/booking'
 import type { TrashMetadata } from '@/models/lifecycle'
+
+// These route unit tests intentionally mutate in-memory fixtures. DB-backed route
+// integration tests should use deterministic database fixtures in separate files.
+let restoreDatabaseUrl: (() => void) | undefined
+let DELETE: typeof import('./[bookingId]/route').DELETE
+let PATCH: typeof import('./[bookingId]/route').PATCH
+let POST: typeof import('./route').POST
+let POST_PATIENT_BOOKING: typeof import('../patients/[patientId]/bookings/route').POST
+
+before(async () => {
+  restoreDatabaseUrl = disableDatabaseForRouteUnitTest()
+  const [bookingDetailRoute, bookingsRoute, patientBookingsRoute] = await Promise.all([
+    import('./[bookingId]/route'),
+    import('./route'),
+    import('../patients/[patientId]/bookings/route'),
+  ])
+  DELETE = bookingDetailRoute.DELETE
+  PATCH = bookingDetailRoute.PATCH
+  POST = bookingsRoute.POST
+  POST_PATIENT_BOOKING = patientBookingsRoute.POST
+})
+
+after(() => {
+  restoreDatabaseUrl?.()
+})
 
 const practitionerId = 'prac-tom-cook'
 

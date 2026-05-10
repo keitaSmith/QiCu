@@ -1,13 +1,27 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import { after, before, test } from 'node:test'
 
 import { NextRequest } from 'next/server'
 
 import { BOOKINGS } from '@/data/bookings'
 import { patientsStore } from '@/data/patientsStore'
 import { sessionsStore } from '@/data/sessionsStore'
+import { disableDatabaseForRouteUnitTest } from '@/test/disableDatabaseForRouteUnitTest'
 import type { TrashMetadata } from '@/models/lifecycle'
-import { POST } from './route'
+
+// These route unit tests intentionally mutate in-memory fixtures. DB-backed route
+// integration tests should use deterministic database fixtures in separate files.
+let restoreDatabaseUrl: (() => void) | undefined
+let POST: typeof import('./route').POST
+
+before(async () => {
+  restoreDatabaseUrl = disableDatabaseForRouteUnitTest()
+  POST = (await import('./route')).POST
+})
+
+after(() => {
+  restoreDatabaseUrl?.()
+})
 
 const practitionerId = 'prac-tom-cook'
 

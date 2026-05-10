@@ -218,6 +218,20 @@ Public status and Google API responses still do not expose plaintext tokens, enc
 
 G.5 DB-backed workflow tests require local PostgreSQL and a test `GOOGLE_TOKEN_ENCRYPTION_KEY`; they use mocked Google network calls and fake token strings only. The existing full-suite `DATABASE_URL` route-test isolation caveat remains separate hygiene work because some older route tests mutate in-memory fixtures while DB-mode repositories read/write PostgreSQL.
 
+## Phase G Completion Audit
+
+Phase G is complete. OAuth state, Google metadata, selected calendar state, encrypted token persistence, token refresh updates, and Google workflow verification are DB-backed where intended when PostgreSQL is available.
+
+OAuth state rows are short-lived, practitioner-scoped, and one-time-use. Public practitioner IDs remain the route/repository boundary, and database UUIDs remain internal to repository mapping code. API routes continue to call repositories/helpers and do not import Drizzle or schema directly.
+
+Google access and refresh tokens are persisted only as encrypted AES-256-GCM payloads. Plaintext tokens, encrypted token payloads, authorization headers, refresh payloads, and database UUIDs are not returned by public status/API responses. `GOOGLE_TOKEN_ENCRYPTION_KEY` is required for token encryption/decryption paths and missing or invalid configuration fails closed; normal app boot does not require the key until a token path is used. Disconnect clears encrypted token columns, selected calendar metadata, connection metadata, and runtime token state.
+
+Calendar list, selected calendar save, events preview, reconcile, booking create/update/delete sync, Google failure fallback, and downstream token refresh were verified with DB-backed encrypted integration state after clearing the in-memory Google runtime store. Local booking mutations continue to survive Google/token failures and record sync error state according to existing behavior.
+
+No schema migration was needed during G.1-G.5. Phase G did not add scheduler/cron/background sync, PKCE, auth, email, token refresh UI, dashboard UI changes, real Google credentials, or real token seed data. OAuth route, status, calendar list, calendar selection, events preview, reconcile, and booking response shapes remain stable, with the G.5 safety fix that calendar selection strips internal token-bearing fields from its JSON response.
+
+Remaining known test hygiene: running the full suite with `DATABASE_URL` set still exposes older route tests that mutate in-memory fixtures while DB-mode repositories read/write PostgreSQL. That is separate future test isolation work and is not a Phase G blocker.
+
 This order keeps the short-lived OAuth security boundary separate from durable token persistence and lets selected calendar/status persistence land before token encryption is exercised in normal sync flows.
 
 ## Testing Plan

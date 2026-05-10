@@ -589,3 +589,13 @@ The downstream token refresh path was verified through a calendar workflow: expi
 Public status/API responses continue to hide plaintext tokens, encrypted token payloads, authorization headers, and refresh payloads. The calendar-selection route now strips internal token-bearing fields from its JSON response. API response shapes used by the dashboard remain stable, API routes still do not import Drizzle directly, and no schema migration, scheduler, cron job, background sync, PKCE, token refresh UI, dashboard UI change, or Google network dependency was added.
 
 The DB-backed G.5 workflow tests require local PostgreSQL and a test `GOOGLE_TOKEN_ENCRYPTION_KEY`; they use mocked Google network responses and fake token strings only. Existing full-suite `DATABASE_URL` test-isolation limitations remain separate hygiene work because some route tests still mutate in-memory fixtures while DB-mode repositories read/write PostgreSQL.
+
+## Implementation note: Phase G completion audit
+
+The Phase G completion audit confirmed that Google persistence is DB-backed where intended. OAuth state creation/consumption uses short-lived, practitioner-scoped, one-time `oauth_states` rows; Google metadata, selected calendar, disconnect state, encrypted token persistence, token refresh updates, and downstream Google workflows now use `google_integrations` through repository/helper seams when PostgreSQL is available.
+
+Google access and refresh tokens are stored only as encrypted AES-256-GCM payloads. `GOOGLE_TOKEN_ENCRYPTION_KEY` is required only for token persistence/decryption paths, not normal app boot. Public status/API responses do not return plaintext tokens, encrypted token payloads, authorization headers, refresh payloads, or database UUIDs. Missing/invalid encryption configuration fails closed for token paths, and disconnect clears encrypted token columns plus runtime token state.
+
+Calendar list, selected calendar save, events preview, reconcile, booking create/update/delete sync, and downstream token refresh were verified against DB-backed encrypted integration state after clearing the in-memory Google runtime store. Local booking workflow fallback remains unchanged when Google/token operations fail.
+
+Phase G did not add schema migrations, scheduler/cron/background sync, PKCE, auth, email, token refresh UI, dashboard UI changes, or real Google token seed data. API routes continue to call repositories/helpers rather than importing Drizzle directly. The remaining full-suite `DATABASE_URL` route-test isolation issue is future test hygiene only: some older route tests mutate in-memory fixtures while DB-mode repositories read/write PostgreSQL.
