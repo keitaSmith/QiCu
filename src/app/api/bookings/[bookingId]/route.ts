@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { BookingStatus } from '@/models/booking'
-import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
+import { getPractitionerIdOrAuthResponse } from '@/lib/practitionerRequest'
 import { syncGoogleOnBookingDelete, syncGoogleOnBookingUpdate } from '@/lib/google/sync'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
 import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
@@ -20,7 +20,9 @@ export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ bookingId: string }> },
 ) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
   const { bookingId } = await context.params
 
   const booking = await bookingsRepository.getById(practitionerId, bookingId)
@@ -122,7 +124,9 @@ export async function DELETE(
   req: NextRequest,
   context: { params: Promise<{ bookingId: string }> },
 ) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
   const { bookingId } = await context.params
 
   const booking = await bookingsRepository.getById(practitionerId, bookingId)

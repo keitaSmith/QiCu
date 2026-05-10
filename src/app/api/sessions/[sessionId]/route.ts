@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
-import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
+import { getPractitionerIdOrAuthResponse } from '@/lib/practitionerRequest'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
 import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
 import * as servicesRepository from '@/lib/repositories/servicesRepository'
@@ -45,7 +45,9 @@ async function ensureBookingCanLink(
 }
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
   const { sessionId } = await params
   const session = await sessionsRepository.getById(practitionerId, sessionId)
 
@@ -54,7 +56,9 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
   const { sessionId } = await params
   const current = await sessionsRepository.getById(practitionerId, sessionId)
   if (!current) {
@@ -99,7 +103,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
   const { sessionId } = await params
   const session = await sessionsRepository.getById(practitionerId, sessionId)
   if (!session) {

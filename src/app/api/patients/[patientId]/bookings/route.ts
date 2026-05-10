@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
+import { getPractitionerIdOrAuthResponse } from '@/lib/practitionerRequest'
 import { canUsePatientInActiveWorkflow } from '@/lib/patientWorkflow'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
 import * as patientsRepository from '@/lib/repositories/patientsRepository'
@@ -17,7 +17,9 @@ export async function POST(
   req: NextRequest,
   context: { params: Promise<{ patientId: string }> },
 ) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
   const { patientId } = await context.params
 
   const patient = await patientsRepository.getById(practitionerId, patientId)

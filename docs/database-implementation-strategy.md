@@ -274,6 +274,14 @@ Phase H.4 implementation note:
 - Manual practitioner switching is now limited to demo mode. In session mode, the profile menu shows the authenticated practitioner identity without allowing arbitrary client-selected scope.
 - The legacy server header fallback remains for H.5, and no dashboard auth UI, middleware, business API response shape change, Google behavior change, or domain workflow change was added.
 
+Phase H.5 implementation note:
+
+- Protected practitioner-scoped API routes now use a shared scope-or-auth-response helper so strict mode returns consistent `401`/`403` JSON auth errors instead of falling back to `x-qicu-practitioner-id`.
+- `QICU_AUTH_ENFORCEMENT=strict` now treats authenticated session-derived practitioner scope as the trusted server path across bookings, patients, patient subroutes, services, sessions, Trash, and Google integration routes.
+- A valid session wins over conflicting practitioner headers; missing/invalid/expired/revoked sessions return `401`; authenticated users without a linked practitioner return `403`.
+- Default/demo mode still preserves the legacy header/default fallback for local development and tests. This fallback remains transitional and should not be the production authenticated path.
+- Google callback remains compatible through DB-backed OAuth state and does not trust practitioner headers. No Google token behavior, business success response shape, schema, middleware, dashboard UI, signup, password reset, or email flow changed.
+
 ## Repository naming and responsibilities
 
 | Repository | Responsibility | Example methods | Current store/API equivalent |

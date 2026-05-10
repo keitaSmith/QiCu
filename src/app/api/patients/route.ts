@@ -2,17 +2,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 
 import type { FhirPatient } from '@/models/patient'
-import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
+import { getPractitionerIdOrAuthResponse } from '@/lib/practitionerRequest'
 import * as patientsRepository from '@/lib/repositories/patientsRepository'
 
 export async function GET(req: NextRequest) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
   const patients = await patientsRepository.listByPractitionerIncludingArchived(practitionerId)
   return NextResponse.json(patients, { status: 200 })
 }
 
 export async function POST(req: NextRequest) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
 
   try {
     const body = (await req.json()) as FhirPatient

@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import type { Service } from '@/models/service'
-import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
+import { getPractitionerIdOrAuthResponse } from '@/lib/practitionerRequest'
 import * as servicesRepository from '@/lib/repositories/servicesRepository'
 
 export async function GET(req: NextRequest) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
   return NextResponse.json(await servicesRepository.listByPractitionerIncludingDisabled(practitionerId), { status: 200 })
 }
 
 export async function POST(req: NextRequest) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
   const body = (await req.json()) as Partial<Service>
   const name = body.name?.trim()
   const durationMinutes = Number(body.durationMinutes)

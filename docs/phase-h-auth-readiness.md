@@ -516,3 +516,28 @@ Current limitations:
 - Business/domain API response shapes, Google OAuth/token behavior, and booking/session/patient/service/lifecycle behavior remain unchanged.
 
 Next phase H.5 should remove or lock down the remaining header fallback and apply strict-mode auth error handling consistently across protected server routes.
+
+## Phase H.5 Implementation Note
+
+Phase H.5 locked down practitioner-scoped server routes for authenticated strict mode while preserving explicit demo/default compatibility.
+
+Strict-mode server behavior:
+
+- Protected practitioner-scoped API routes now resolve scope through a shared `getPractitionerIdOrAuthResponse` route helper.
+- With `QICU_AUTH_ENFORCEMENT=strict`, routes return clean JSON auth errors instead of falling back to `x-qicu-practitioner-id`.
+- Missing, invalid, expired, or revoked sessions return `401`.
+- Authenticated users without a linked practitioner return `403`.
+- Valid session-derived practitioner scope wins over any conflicting `x-qicu-practitioner-id` header.
+- Error responses do not expose session tokens, password hashes, DB UUIDs, stack traces, or other internals.
+
+Routes covered by the strict helper include bookings, patients, patient subroutes, services, sessions, Trash, and Google integration routes that require practitioner scope. The Google callback route remains intentionally different: it consumes the DB-backed OAuth state and does not trust practitioner headers.
+
+Transition behavior remains:
+
+- Default/dev/test mode still supports the legacy `x-qicu-practitioner-id` header and default demo fallback.
+- H.4 session-mode dashboard fetches already omit the header, while demo-mode fetches continue to send it.
+- The legacy fallback is retained only for local development/tests and is not the authenticated production path.
+
+No business success response shapes changed. The only intentional API behavior difference is strict-mode `401`/`403` auth errors before domain validation runs. No Google token behavior, dashboard UI, middleware, schema, signup, password reset, or email flow was added.
+
+H.6 should perform the auth completion audit and recommend production environment settings, including whether production should require `QICU_AUTH_ENFORCEMENT=strict`.

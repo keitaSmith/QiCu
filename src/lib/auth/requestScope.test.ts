@@ -4,6 +4,8 @@ import { afterEach, test } from 'node:test'
 
 import { eq } from 'drizzle-orm'
 import { NextRequest } from 'next/server'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { drizzleDb } from '@/db/client'
 import { practitioners, users } from '@/db/schema'
@@ -14,6 +16,11 @@ import { createAuthSession, revokeAuthSession } from '@/lib/repositories/authRep
 import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrationsRepository'
 import { GET as GET_BOOKINGS } from '@/app/api/bookings/route'
 import { GET as GET_GOOGLE_AUTH_URL } from '@/app/api/integrations/google/auth-url/route'
+import { GET as GET_GOOGLE_STATUS } from '@/app/api/integrations/google/status/route'
+import { GET as GET_PATIENTS } from '@/app/api/patients/route'
+import { GET as GET_SERVICES } from '@/app/api/services/route'
+import { GET as GET_SESSIONS } from '@/app/api/sessions/route'
+import { GET as GET_TRASH } from '@/app/api/trash/route'
 import { getPractitionerScopeForRequest } from './requestScope'
 
 const createdUserIds = new Set<string>()
@@ -201,7 +208,82 @@ test('representative booking route returns 401 in strict mode without session an
   )
 
   assert.equal(validSession.status, 200)
-  assert.ok(Array.isArray(await validSession.json()))
+  const bookings = await validSession.json()
+  assert.ok(Array.isArray(bookings))
+  assert.equal(bookings.every((booking: { practitionerId?: string }) => booking.practitionerId === 'prac-tom-cook'), true)
+})
+
+test('representative protected routes return 401 in strict mode without a session', async t => {
+  const setup = await createUser('prac-tom-cook')
+  if (!setup.available || !setup.user) {
+    t.skip('PostgreSQL auth tables are not available for this test run.')
+    return
+  }
+  setStrictAuth()
+
+  const routes: Array<[string, (req: NextRequest) => Promise<Response>]> = [
+    ['/api/patients', GET_PATIENTS],
+    ['/api/services', GET_SERVICES],
+    ['/api/sessions', GET_SESSIONS],
+    ['/api/trash', GET_TRASH],
+    ['/api/integrations/google/status', GET_GOOGLE_STATUS],
+  ]
+
+  for (const [path, handler] of routes) {
+    const response = await handler(
+      new NextRequest(`http://localhost:3000${path}`, {
+        headers: { 'x-qicu-practitioner-id': 'prac-tom-cook' },
+      }),
+    )
+    assert.equal(response.status, 401, path)
+  }
+})
+
+test('representative protected routes work in strict mode with a valid session', async t => {
+  const setup = await createUser('prac-tom-cook')
+  if (!setup.available || !setup.user) {
+    t.skip('PostgreSQL auth tables are not available for this test run.')
+    return
+  }
+  setStrictAuth()
+  const cookie = await createSessionCookie(setup.user.id)
+
+  const routes: Array<[string, (req: NextRequest) => Promise<Response>]> = [
+    ['/api/patients', GET_PATIENTS],
+    ['/api/services', GET_SERVICES],
+    ['/api/sessions', GET_SESSIONS],
+    ['/api/trash', GET_TRASH],
+    ['/api/integrations/google/status', GET_GOOGLE_STATUS],
+  ]
+
+  for (const [path, handler] of routes) {
+    const response = await handler(
+      new NextRequest(`http://localhost:3000${path}`, {
+        headers: { cookie, 'x-qicu-practitioner-id': 'prac-keita-smith' },
+      }),
+    )
+    assert.equal(response.status, 200, path)
+  }
+})
+
+test('representative protected route returns 403 for authenticated user without linked practitioner', async t => {
+  const setup = await createUser()
+  if (!setup.available || !setup.user) {
+    t.skip('PostgreSQL auth tables are not available for this test run.')
+    return
+  }
+  setStrictAuth()
+
+  const cookie = await createSessionCookie(setup.user.id)
+  const response = await GET_SERVICES(
+    new NextRequest('http://localhost:3000/api/services', {
+      headers: { cookie, 'x-qicu-practitioner-id': 'prac-tom-cook' },
+    }),
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 403)
+  assert.equal(body.error, 'Authenticated user is not linked to a practitioner.')
 })
 
 test('Google auth-url route creates OAuth state for authenticated practitioner in strict mode', async t => {
@@ -229,4 +311,22 @@ test('Google auth-url route creates OAuth state for authenticated practitioner i
 
   const pending = await googleIntegrationsRepository.consumeOAuthState(state ?? '')
   assert.equal(pending?.practitionerId, 'prac-keita-smith')
+})
+
+function collectRouteFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+    const fullPath = join(dir, entry.name)
+    if (entry.isDirectory()) return collectRouteFiles(fullPath)
+    return entry.name === 'route.ts' ? [fullPath] : []
+  })
+}
+
+test('runtime API routes use the auth-response scope helper instead of direct practitioner scope calls', () => {
+  const apiRoot = join(process.cwd(), 'src', 'app', 'api')
+  const directScopeCallers = collectRouteFiles(apiRoot).filter(file => {
+    const source = readFileSync(file, 'utf8')
+    return source.includes('getPractitionerIdFromRequest')
+  })
+
+  assert.deepEqual(directScopeCallers, [])
 })

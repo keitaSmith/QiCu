@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { listGoogleCalendars } from '@/lib/google/calendarApi'
-import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
+import { getPractitionerIdOrAuthResponse } from '@/lib/practitionerRequest'
 import { getErrorMessage } from '@/lib/errors'
 import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrationsRepository'
 
 export async function GET(req: NextRequest) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
 
   try {
     const calendars = await listGoogleCalendars(practitionerId, req)

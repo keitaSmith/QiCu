@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import type { Service } from '@/models/service'
-import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
+import { getPractitionerIdOrAuthResponse } from '@/lib/practitionerRequest'
 import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
 import * as servicesRepository from '@/lib/repositories/servicesRepository'
 
@@ -10,7 +10,9 @@ type RouteParams = {
 }
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
   const { serviceId } = await params
   const service = await servicesRepository.getById(practitionerId, serviceId)
 
@@ -22,7 +24,9 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
   const { serviceId } = await params
   const current = await servicesRepository.getById(practitionerId, serviceId)
 
@@ -69,7 +73,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
   const { serviceId } = await params
   const service = await servicesRepository.getById(practitionerId, serviceId)
 

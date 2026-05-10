@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { listGoogleCalendarEvents } from '@/lib/google/calendarApi'
 import { buildGoogleBookingImportPreview } from '@/lib/google/eventMapping'
 import type { GoogleImportMode } from '@/lib/google/types'
-import { getPractitionerIdFromRequest } from '@/lib/practitionerRequest'
+import { getPractitionerIdOrAuthResponse } from '@/lib/practitionerRequest'
 import { getErrorMessage } from '@/lib/errors'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
 import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrationsRepository'
@@ -24,7 +24,9 @@ function ninetyDaysFromTodayIso() {
 }
 
 export async function GET(req: NextRequest) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  const scope = await getPractitionerIdOrAuthResponse(req)
+  if (scope.response) return scope.response
+  const practitionerId = scope.practitionerId
 
   const from = req.nextUrl.searchParams.get('from')?.trim() || startOfTodayIso()
   const to = req.nextUrl.searchParams.get('to')?.trim() || ninetyDaysFromTodayIso()
