@@ -1,7 +1,7 @@
-import { CURRENT_PRACTITIONER_HEADER } from '@/lib/practitioners'
-import * as practitionersRepository from '@/lib/repositories/practitionersRepository'
+import { getPractitionerScopeForRequest } from '@/lib/auth/requestScope'
 
 export async function getPractitionerIdFromRequest(req: Request): Promise<string> {
-  const value = req.headers.get(CURRENT_PRACTITIONER_HEADER)?.trim()
-  return practitionersRepository.normalizePractitionerId(value)
+  return (await getPractitionerScopeForRequest(req)).practitionerId
 }
+
+export { authScopeErrorResponse, getPractitionerScopeForRequest } from '@/lib/auth/requestScope'

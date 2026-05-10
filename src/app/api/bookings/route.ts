@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import type { Booking } from '@/models/booking'
 import {
+  authScopeErrorResponse,
   getPractitionerIdFromRequest,
 } from '@/lib/practitionerRequest'
 import { syncGoogleOnBookingCreate } from '@/lib/google/sync'
@@ -31,12 +32,28 @@ function generateBookingCode(practitionerId: string) {
 }
 
 export async function GET(req: NextRequest) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  let practitionerId: string
+  try {
+    practitionerId = await getPractitionerIdFromRequest(req)
+  } catch (error) {
+    const response = authScopeErrorResponse(error)
+    if (response) return response
+    throw error
+  }
+
   return NextResponse.json(await bookingsRepository.listByPractitioner(practitionerId), { status: 200 })
 }
 
 export async function POST(req: NextRequest) {
-  const practitionerId = await getPractitionerIdFromRequest(req)
+  let practitionerId: string
+  try {
+    practitionerId = await getPractitionerIdFromRequest(req)
+  } catch (error) {
+    const response = authScopeErrorResponse(error)
+    if (response) return response
+    throw error
+  }
+
   const body = (await req.json()) as CreateBookingBody
 
   const patientId = body.patientId?.trim()

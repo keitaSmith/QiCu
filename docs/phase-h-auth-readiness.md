@@ -449,3 +449,40 @@ Login/logout POST routes include a small same-origin guard that rejects requests
 Current domain behavior remains unchanged. H.2 did not enforce auth on patients, bookings, sessions, services, lifecycle/Trash, Google, or export routes. `getPractitionerIdFromRequest`, `x-qicu-practitioner-id`, dashboard practitioner context, Google OAuth/encrypted token behavior, and existing API response shapes remain unchanged. No real credentials are seeded.
 
 Next phase H.3 should derive practitioner scope from authenticated sessions in server routes while preserving response shapes and adding clear unauthenticated/unauthorized behavior.
+
+## Phase H.3 Implementation Note
+
+Phase H.3 added the central trusted request-scope seam for deriving practitioner scope from authenticated sessions while preserving the legacy header path in default mode.
+
+Added behavior:
+
+- `src/lib/auth/requestScope.ts`
+  - Resolves a valid `qicu_session` cookie through the H.2 session helper.
+  - Maps the session user to the linked practitioner.
+  - Returns public practitioner IDs only.
+  - Never trusts practitioner IDs from cookies.
+  - Makes session scope win over a conflicting `x-qicu-practitioner-id` header.
+  - Supports `QICU_AUTH_ENFORCEMENT=strict` for strict mode.
+- `src/lib/practitionerRequest.ts`
+  - Keeps `getPractitionerIdFromRequest` as the central route seam.
+  - Calls the new request-scope helper internally.
+  - Preserves legacy/default header behavior when strict mode is not enabled.
+  - Exports an auth-scope error response helper for routes that need clean strict-mode JSON responses.
+
+Strict mode behavior:
+
+- `QICU_AUTH_ENFORCEMENT=strict` requires a valid authenticated session-derived practitioner scope.
+- Missing, expired, revoked, or invalid sessions return clear auth failures in routes that have been wired for strict-mode error handling.
+- A user with no linked practitioner receives a clear forbidden scope error.
+- The legacy `x-qicu-practitioner-id` header is not trusted in strict mode.
+
+Transition behavior:
+
+- Default/dev/test mode remains legacy-compatible. The dashboard can still send `x-qicu-practitioner-id`, and missing headers can still fall back to the demo default practitioner.
+- The dashboard/client transition has not happened yet.
+- `withPractitionerHeaders`, `PractitionerContext`, and manual practitioner selection remain in place for H.4.
+- Header fallback remains transitional and is not production-safe.
+
+Representative strict-mode route handling was added for `/api/bookings` and `/api/integrations/google/auth-url`. The booking route demonstrates strict protected business-route behavior, and the Google auth-url route ensures OAuth state is created for the authenticated practitioner in strict mode. The Google callback route still consumes the DB-backed OAuth state and remains compatible.
+
+Later H.4/H.5 work should apply the strict-mode response wrapper consistently as the dashboard moves away from manual practitioner headers and the legacy fallback is removed or locked down.

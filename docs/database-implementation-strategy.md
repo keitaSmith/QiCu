@@ -258,6 +258,15 @@ Phase H.2 implementation note:
 - Login/logout POST routes reject clearly cross-origin requests when an `Origin` header does not match the request origin.
 - Existing business/domain routes are not protected yet, and `getPractitionerIdFromRequest`, `x-qicu-practitioner-id`, dashboard practitioner context, Google behavior, and existing API response shapes remain unchanged until later Phase H steps.
 
+Phase H.3 implementation note:
+
+- Added a central authenticated request-scope seam in `src/lib/auth/requestScope.ts`.
+- `getPractitionerIdFromRequest` now prefers valid session-derived practitioner scope when available, while preserving legacy header/default behavior unless `QICU_AUTH_ENFORCEMENT=strict` is set.
+- In strict mode, missing/invalid/expired/revoked sessions do not fall back to `x-qicu-practitioner-id`; authenticated session scope wins over conflicting headers.
+- The request-scope helper returns public practitioner IDs and safe user context only; DB UUIDs stay internal.
+- Representative strict-mode handling was wired into `/api/bookings` and `/api/integrations/google/auth-url`. The Google callback continues to rely on the DB-backed OAuth state created by auth-url.
+- Dashboard/client behavior is unchanged. `withPractitionerHeaders`, `PractitionerContext`, and manual practitioner selection remain until H.4. The legacy header fallback remains transitional and should be removed or locked down in H.5.
+
 ## Repository naming and responsibilities
 
 | Repository | Responsibility | Example methods | Current store/API equivalent |
