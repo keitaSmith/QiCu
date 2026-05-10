@@ -525,3 +525,13 @@ Phase F.5 moved full patient export reads to Drizzle/PostgreSQL when the databas
 Exported records use public IDs, not database UUIDs. Booking and session service snapshots remain readable even if services are disabled, trashed, or purged because snapshot fields remain on booking/session rows. Lifecycle-aware export now reflects persisted archive, Trash, restore, and purge state after app restart: existing linked rows are exported, while purged rows are omitted because they no longer exist.
 
 Non-production/test fallback still supports existing in-memory export behavior for test fixtures and custom runtime data. Phase F completion audit can run next.
+
+## Implementation note: Phase F completion audit
+
+The Phase F completion audit confirmed that lifecycle/Trash persistence is DB-backed where intended. Patient archive/reactivate, grouped Delete Patient Data, grouped restore, individual booking/session/service Trash delete and restore, expired Trash purge, and patient export now use Drizzle/PostgreSQL when available.
+
+The Trash read model remains DB-backed and reconstructs grouped patient Trash items plus individual booking/session/service recovery records from persisted lifecycle metadata. Purge remains a callable/admin-only helper; no scheduler, cron, public purge route, dashboard purge UI, reset script, truncate script, or drop script was added.
+
+Public IDs remain stable, DB UUIDs remain internal, API response/export shapes remain stable, and API routes still do not import Drizzle directly. Google integration remains in-memory and should be handled in Phase G.
+
+Remaining transition mirrors in `patientsStore`, `BOOKINGS`, `sessionsStore`, and `servicesStore` still support test/non-production fallback and compatibility paths. A future cleanup can reduce those mirrors after the remaining Google/auth persistence boundaries are addressed.

@@ -335,3 +335,17 @@ Exports keep the FHIR-like patient profile shape and use public IDs for patients
 Purged records are naturally omitted because they no longer exist in the database. Service snapshots remain readable because booking and session rows carry service snapshot fields such as service name and duration/name even when a service is disabled, trashed, or purged. Non-production/test fallback still preserves the existing in-memory export behavior where tests or custom runtime data need it.
 
 Phase F completion audit can run next.
+
+## Completion Audit: Phase F
+
+The Phase F completion audit confirmed that lifecycle and Trash persistence are now DB-backed where intended when PostgreSQL is available.
+
+`lifecycleRepository` owns Drizzle-backed transactions for patient archive/reactivate, grouped Delete Patient Data, grouped patient restore, individual booking/session/service Trash delete and restore, and expired Trash purge. `trashRepository` owns the DB-backed recovery read model, so patient-data deletion groups and individual booking/session/service Trash records can be reconstructed from persisted metadata after restart.
+
+The audit confirmed the core product rules remain intact: archive is not Delete Patient Data; service disable remains separate from service Trash delete; restore is limited by `restore_until`; grouped patient restore restores the grouped patient/bookings/sessions together; individual restores affect only the individual record; and purge remains permanent, expired-only, and callable/admin-only with no scheduler, cron, route, or dashboard UI.
+
+Patient export is DB-backed and lifecycle-aware when PostgreSQL is available. It preserves the existing export shape and uses public IDs for patients, bookings, sessions, services, and booking links. Purged records are omitted because they no longer exist, and service snapshots remain readable from booking/session rows even when services are disabled, trashed, or purged.
+
+Public IDs remain stable and database UUIDs remain internal to repository mapping code. API routes still call repositories/helpers and do not import Drizzle directly. Google integration remains in-memory and is the next persistence boundary for Phase G.
+
+Remaining cleanup opportunities are mostly transition-mirror related: `patientsStore`, `BOOKINGS`, `sessionsStore`, and `servicesStore` mirrors still exist for non-production/test fallback and for compatibility around runtime flows that have not been fully refactored away from in-memory assumptions. These mirrors should be reduced in a later cleanup after Phase G or a dedicated repository-hardening pass, not during this audit.
