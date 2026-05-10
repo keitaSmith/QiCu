@@ -381,3 +381,40 @@ Rollback/safety:
 - Dashboard UI changes.
 - Domain behavior changes for bookings, sessions, patients, services, lifecycle, Trash, or export.
 - Broad DB-mode test isolation cleanup.
+
+## Phase H.1 Implementation Note
+
+Phase H.1 added the low-level auth/session foundation without changing runtime auth behavior.
+
+Schema additions are additive:
+
+- `password_credentials`
+  - Stores one password credential per user.
+  - Stores `password_hash`, `password_algorithm`, timestamps, and nullable `password_changed_at`.
+  - References `users(id)` with cascade cleanup.
+  - Does not store plaintext passwords.
+- `auth_sessions`
+  - Stores server-side opaque session metadata.
+  - Stores only `session_token_hash`, never the plaintext session token.
+  - Includes `expires_at`, nullable `revoked_at`, nullable `last_seen_at`, and optional non-secret request metadata.
+  - References `users(id)` with cascade cleanup.
+- `practitioners_user_id_unique`
+  - Adds a partial unique index for one practitioner per user where `user_id` is not null.
+
+Low-level helpers were added:
+
+- `src/lib/auth/password.ts`
+  - Uses `bcrypt` through `bcryptjs`.
+  - Rejects empty or too-short passwords.
+  - Verifies stored hashes by explicit algorithm.
+- `src/lib/auth/sessionTokens.ts`
+  - Generates high-entropy opaque session tokens.
+  - Hashes tokens with SHA-256 before storage.
+  - Centralizes the initial session expiry window.
+- `src/lib/repositories/authRepository.ts`
+  - Provides internal credential/session persistence helpers for future login/logout work.
+  - No existing API route calls it yet.
+
+Current app behavior is unchanged. H.1 did not add login/logout routes, cookies, middleware enforcement, dashboard auth UI, or changes to `getPractitionerIdFromRequest`. The transition `x-qicu-practitioner-id` header remains the current route scoping mechanism until a later Phase H step replaces it with auth-derived practitioner scope.
+
+No real users, passwords, credentials, or session tokens are seeded. Future H.2 should implement login/logout/session cookie behavior using these helpers.

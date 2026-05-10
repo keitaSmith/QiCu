@@ -19,6 +19,7 @@
   "dependencies": {
     "@headlessui/react": "^2.2.9",
     "@heroicons/react": "^2.2.0",
+    "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.2",
     "flag-icons": "^7.5.0",
     "framer-motion": "^12.23.24",

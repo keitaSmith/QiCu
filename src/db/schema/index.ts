@@ -1,4 +1,5 @@
 export * from './users'
+export * from './auth'
 export * from './practitioners'
 export * from './deletionGroups'
 export * from './patients'

@@ -5,6 +5,8 @@ loadEnvConfig(process.cwd())
 
 const expectedTables = [
   'users',
+  'auth_sessions',
+  'password_credentials',
   'practitioners',
   'deletion_groups',
   'patients',

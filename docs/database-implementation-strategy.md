@@ -241,6 +241,14 @@ Phase H.0 readiness note:
 - Recommended next direction is server-side opaque sessions in secure, HttpOnly cookies, backed by PostgreSQL, with auth-derived practitioner scope replacing the header in staged Phase H steps.
 - See `docs/phase-h-auth-readiness.md` for the scoping inventory, proposed schema model, Phase H sub-phase plan, security considerations, and test plan.
 
+Phase H.1 implementation note:
+
+- Added additive `password_credentials` and `auth_sessions` schema plus a partial unique index on `practitioners.user_id` for the initial one-user-one-practitioner model.
+- Password credentials store bcrypt password hashes and an explicit algorithm name; plaintext passwords are never stored or seeded.
+- Auth sessions use opaque random tokens and persist only SHA-256 token hashes plus expiry/revocation metadata.
+- Added low-level password, session-token, and internal auth repository helpers for future login/logout work.
+- No login/logout routes, cookies, middleware enforcement, dashboard auth UI, API behavior changes, Google changes, or `x-qicu-practitioner-id` changes were added in H.1.
+
 ## Repository naming and responsibilities
 
 | Repository | Responsibility | Example methods | Current store/API equivalent |
