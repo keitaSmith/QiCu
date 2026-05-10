@@ -541,3 +541,63 @@ Transition behavior remains:
 No business success response shapes changed. The only intentional API behavior difference is strict-mode `401`/`403` auth errors before domain validation runs. No Google token behavior, dashboard UI, middleware, schema, signup, password reset, or email flow was added.
 
 H.6 should perform the auth completion audit and recommend production environment settings, including whether production should require `QICU_AUTH_ENFORCEMENT=strict`.
+
+## Phase H.6 Completion Audit
+
+Phase H is complete for the planned auth/session and practitioner-scope transition foundation.
+
+Confirmed implementation boundaries:
+
+- `password_credentials` stores password hashes and password metadata only; plaintext passwords are not stored or seeded.
+- `auth_sessions` stores only SHA-256 hashes of opaque session tokens plus expiry/revocation metadata; plaintext session tokens live only long enough to set/read the HttpOnly cookie.
+- `POST /api/auth/login` creates an opaque session, stores only the token hash, sets `qicu_session`, and returns safe user fields.
+- `POST /api/auth/logout` revokes the hashed session when present, clears `qicu_session`, and remains idempotent.
+- `GET /api/auth/me` returns only safe public auth state: authenticated flag, user email/name, and public practitioner ID/name when linked.
+- `PractitionerContext` loads `/api/auth/me`; session mode uses the authenticated practitioner and does not use localStorage-selected practitioner scope.
+- Session-mode dashboard fetches include cookies and omit `x-qicu-practitioner-id`.
+- Demo mode remains explicit for local development/tests and still supports localStorage plus the legacy practitioner header.
+- Strict server mode resolves practitioner scope from authenticated sessions and does not trust `x-qicu-practitioner-id`.
+- Protected practitioner-scoped routes use the strict-mode helper path and return clean `401`/`403` auth errors before domain validation when scope is missing or invalid.
+- Google integration routes use authenticated practitioner scope in strict mode; the Google callback remains scoped through DB-backed OAuth state and does not trust practitioner headers.
+- Public practitioner IDs remain the external boundary, and DB UUIDs remain internal.
+
+Security audit findings:
+
+- `qicu_session` is `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` when `NODE_ENV=production`.
+- The cookie contains only an opaque session token. It does not contain user IDs, practitioner IDs, database UUIDs, email, or claims.
+- Auth error responses are clean and do not expose stack traces, session tokens, password hashes, token hashes, or DB UUIDs.
+- Login uses a generic invalid-credentials response so callers cannot distinguish unknown email from wrong password.
+- Login/logout POST routes include a same-origin guard for clearly cross-origin requests.
+- Google access/refresh tokens remain encrypted at rest and hidden from public responses; strict auth scope protects the Google integration routes that use them.
+- In strict mode, spoofed `x-qicu-practitioner-id` headers cannot change the authenticated practitioner's scope.
+
+Protected route coverage:
+
+- Bookings: `/api/bookings`, `/api/bookings/[bookingId]`
+- Patients: `/api/patients`, `/api/patients/[patientId]`, `/api/patients/[patientId]/archive`, `/api/patients/[patientId]/bookings`, `/api/patients/[patientId]/export`, `/api/patients/[patientId]/reactivate`, `/api/patients/[patientId]/sessions`
+- Services: `/api/services`, `/api/services/[serviceId]`
+- Sessions: `/api/sessions`, `/api/sessions/[sessionId]`
+- Trash: `/api/trash`, `/api/trash/[deletionGroupId]/restore`
+- Google: `/api/integrations/google/auth-url`, `/api/integrations/google/calendar-selection`, `/api/integrations/google/calendars`, `/api/integrations/google/disconnect`, `/api/integrations/google/events-preview`, `/api/integrations/google/reconcile`, `/api/integrations/google/status`
+
+Production recommendations:
+
+- Set `QICU_AUTH_ENFORCEMENT=strict` in production.
+- Serve production over HTTPS so `Secure` session cookies are sent correctly.
+- Do not rely on demo practitioner fallback in production. Consider disabling demo mode or guarding it behind `NODE_ENV !== "production"` in a future hardening pass.
+- Set a strong `GOOGLE_TOKEN_ENCRYPTION_KEY` before using Google token persistence paths.
+- Use a strong database password or managed PostgreSQL with backups and restricted network access.
+- Add broader CSRF hardening before real sensitive deployment. SameSite and login/logout origin checks help, but cookie-authenticated mutating domain routes should eventually use a consistent CSRF/origin strategy.
+- Add real login UX, signup/invite, password reset, and email verification flows before onboarding real users.
+- Consider middleware/page redirects after the product decides how unauthenticated dashboard visits should behave.
+
+Out of scope and remaining future work:
+
+- Login page/redirect UX.
+- Signup, practitioner invite, password reset, and email verification.
+- CSRF protection beyond the current login/logout origin guard.
+- Middleware/page-level dashboard redirects.
+- Production-only removal or disabling of demo fallback.
+- Organization/multi-practitioner account model expansion.
+
+No business success response shapes changed in Phase H. Public IDs remain stable, DB UUIDs remain internal, and existing booking/session/patient/service/lifecycle/Trash/Google domain behavior remains unchanged apart from intentional strict-mode auth errors.

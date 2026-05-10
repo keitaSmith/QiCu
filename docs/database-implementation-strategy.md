@@ -282,6 +282,15 @@ Phase H.5 implementation note:
 - Default/demo mode still preserves the legacy header/default fallback for local development and tests. This fallback remains transitional and should not be the production authenticated path.
 - Google callback remains compatible through DB-backed OAuth state and does not trust practitioner headers. No Google token behavior, business success response shape, schema, middleware, dashboard UI, signup, password reset, or email flow changed.
 
+Phase H.6 completion audit note:
+
+- Phase H is complete for the planned auth/session foundation and authenticated practitioner-scope transition.
+- Password credentials store hashes only, auth sessions store opaque session token hashes only, login/logout/session cookie behavior is in place, and `/api/auth/me` returns safe public auth state.
+- Dashboard session mode uses `/api/auth/me`, sends cookies, and omits `x-qicu-practitioner-id`; demo mode remains explicit for local development/tests.
+- Strict mode now provides the authenticated production path: protected practitioner-scoped API routes resolve session-derived public practitioner scope and return clean `401`/`403` errors when auth scope is missing or invalid.
+- Production should set `QICU_AUTH_ENFORCEMENT=strict`, use HTTPS, avoid demo fallback, set `GOOGLE_TOKEN_ENCRYPTION_KEY` before Google token paths are used, and plan additional CSRF hardening before real sensitive deployment.
+- Remaining auth work is product/UX hardening: login page/redirects, signup/invite, password reset, email verification, broader CSRF strategy, optional middleware redirects, and production-only demo fallback removal.
+
 ## Repository naming and responsibilities
 
 | Repository | Responsibility | Example methods | Current store/API equivalent |
