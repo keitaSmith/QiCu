@@ -233,6 +233,14 @@ Tasks:
 - Plan the `users`/`practitioners` relationship.
 - Do not implement auth during database persistence migration unless explicitly chosen.
 
+Phase H.0 readiness note:
+
+- Auth has not been implemented yet. QiCu still uses the transition `x-qicu-practitioner-id` header through `getPractitionerIdFromRequest`, and the dashboard still sends that header from demo practitioner context.
+- The repository layer is ready for auth because scoped methods already accept public practitioner IDs and keep database UUIDs internal.
+- The existing schema already includes `users` and nullable `practitioners.user_id`, but it does not yet include app session or password credential tables.
+- Recommended next direction is server-side opaque sessions in secure, HttpOnly cookies, backed by PostgreSQL, with auth-derived practitioner scope replacing the header in staged Phase H steps.
+- See `docs/phase-h-auth-readiness.md` for the scoping inventory, proposed schema model, Phase H sub-phase plan, security considerations, and test plan.
+
 ## Repository naming and responsibilities
 
 | Repository | Responsibility | Example methods | Current store/API equivalent |
