@@ -203,8 +203,20 @@ Behavior to preserve:
 2. Phase G.2: Move OAuth state create/consume to DB-backed repository methods with expiry and one-time consumption. Complete: OAuth state rows now use `oauth_states` when PostgreSQL is available; route behavior is unchanged.
 3. Phase G.3: Move public integration status, selected calendar, connected account metadata, and disconnect to DB-backed repository methods without persisting plaintext tokens. Complete: non-secret metadata is persisted where safe, while usable-token connection state remains runtime-only until encrypted token persistence lands.
 4. Phase G.4: Implement encrypted token persistence and token refresh update behavior. Complete: access/refresh tokens are persisted only as encrypted payloads, status can use decryptable DB tokens after restart, and refresh updates encrypted access token/expiry while preserving refresh tokens when Google omits a replacement. DB-backed targeted Google/G.4 tests passed against local PostgreSQL with 36/36 tests and 0 skipped; `db:migrate`, `db:check`, and `db:seed` also passed.
-5. Phase G.5: Verify booking create/update/delete sync, calendar list, events preview, and reconcile against DB-backed integration state.
+5. Phase G.5: Verify booking create/update/delete sync, calendar list, events preview, and reconcile against DB-backed integration state. Complete: calendar list, selected calendar save, events preview, reconcile, booking create/update/delete sync, token refresh, and Google failure fallback were verified with DB-backed encrypted integration state after the in-memory Google runtime store was cleared.
 6. Phase G completion audit.
+
+## Phase G.5 Implementation Note
+
+Phase G.5 verified the main Google workflows against encrypted `google_integrations` state. The DB-backed workflow tests save encrypted fake access/refresh tokens, clear the in-memory Google runtime store to simulate restart, and then exercise calendar list, selected calendar save, events preview, reconcile, and booking create/update/delete sync through the normal repository/helper seams.
+
+Calendar list, preview, reconcile, and booking sync can now obtain decrypted tokens internally through `getUsableIntegration`/`ensureFreshGoogleAccessToken` after restart. Selected calendar metadata remains practitioner-scoped and persists in PostgreSQL. Events preview and reconcile keep their existing response shapes and continue using repository-backed patients/services/bookings for matching and duplicate detection.
+
+Token refresh was verified from a downstream calendar workflow: an expired encrypted access token is refreshed with the encrypted refresh token, the refreshed access token and expiry are persisted encrypted, and the existing refresh token is preserved when Google omits a replacement. Booking create/update/delete fallback remains unchanged when Google/token operations fail; local booking mutations continue and record sync error state without exposing token details.
+
+Public status and Google API responses still do not expose plaintext tokens, encrypted token payloads, authorization headers, or refresh payloads. The calendar-selection route strips internal token-bearing fields from its JSON response. No schema migration, scheduler, cron job, background sync, PKCE, token refresh UI, dashboard UI change, or real Google network dependency was added.
+
+G.5 DB-backed workflow tests require local PostgreSQL and a test `GOOGLE_TOKEN_ENCRYPTION_KEY`; they use mocked Google network calls and fake token strings only. The existing full-suite `DATABASE_URL` route-test isolation caveat remains separate hygiene work because some older route tests mutate in-memory fixtures while DB-mode repositories read/write PostgreSQL.
 
 This order keeps the short-lived OAuth security boundary separate from durable token persistence and lets selected calendar/status persistence land before token encryption is exercised in normal sync flows.
 

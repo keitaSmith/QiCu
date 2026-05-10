@@ -32,5 +32,13 @@ export async function POST(req: NextRequest) {
     calendarName: body.calendarName,
   })
 
-  return NextResponse.json(updated, { status: 200 })
+  return NextResponse.json({
+    practitionerId: updated.practitionerId,
+    connected: updated.connected,
+    googleUserEmail: updated.googleUserEmail,
+    selectedCalendarId: updated.selectedCalendarId,
+    selectedCalendarName: updated.selectedCalendarName,
+    lastError: updated.lastError,
+    connectedAt: updated.connectedAt,
+  }, { status: 200 })
 }

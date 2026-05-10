@@ -579,3 +579,13 @@ Phase G.4 wired the existing Google token encryption utility into `googleIntegra
 Internal Google helper paths can now load/decrypt DB-backed tokens through repository internals. Successful refresh persists the newly encrypted access token and updated expiry while preserving the existing encrypted refresh token if Google does not return a replacement. Disconnect clears runtime token state plus encrypted token columns, token expiry, selected calendar metadata, last error, and connected timestamp.
 
 OAuth state remains DB-backed from Phase G.2, and non-secret metadata/selected calendar state remains DB-backed from Phase G.3. Google sync fallback behavior, calendar list behavior, import preview, reconcile response shapes, dashboard UI, booking workflows, public IDs, and API response shapes remain unchanged. No schema migration, PKCE, scheduler, cron job, background sync, or token refresh UI was added.
+
+## Implementation note: Phase G.5 Google workflow verification
+
+Phase G.5 verified the main Google workflows against DB-backed encrypted integration state. Calendar list, selected calendar save, events preview, reconcile, and booking create/update/delete sync can use encrypted `google_integrations` tokens internally after the in-memory Google runtime store is cleared.
+
+The downstream token refresh path was verified through a calendar workflow: expired encrypted access tokens are refreshed with the encrypted refresh token, the new access token and expiry are persisted encrypted, and the refresh token is preserved when Google does not return a replacement. Booking local workflow fallback remains unchanged when Google/token operations fail; local booking mutations still survive and record sync error state.
+
+Public status/API responses continue to hide plaintext tokens, encrypted token payloads, authorization headers, and refresh payloads. The calendar-selection route now strips internal token-bearing fields from its JSON response. API response shapes used by the dashboard remain stable, API routes still do not import Drizzle directly, and no schema migration, scheduler, cron job, background sync, PKCE, token refresh UI, dashboard UI change, or Google network dependency was added.
+
+The DB-backed G.5 workflow tests require local PostgreSQL and a test `GOOGLE_TOKEN_ENCRYPTION_KEY`; they use mocked Google network responses and fake token strings only. Existing full-suite `DATABASE_URL` test-isolation limitations remain separate hygiene work because some route tests still mutate in-memory fixtures while DB-mode repositories read/write PostgreSQL.

@@ -99,6 +99,8 @@ test('Google calendar selection route preserves connected checks and response sh
   assert.equal(payload.connected, true)
   assert.equal(payload.selectedCalendarId, 'calendar-route')
   assert.equal(payload.selectedCalendarName, 'Route Calendar')
+  assert.equal(payload.accessToken, undefined)
+  assert.equal(payload.refreshToken, undefined)
 })
 
 test('Google disconnect route clears scoped integration', async () => {
