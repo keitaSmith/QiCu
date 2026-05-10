@@ -35,8 +35,16 @@ import * as sessionsRepository from '@/lib/repositories/sessionsRepository'
 import * as servicesRepository from '@/lib/repositories/servicesRepository'
 import * as patientsRepository from '@/lib/repositories/patientsRepository'
 import { patientsStore } from '@/data/patientsStore'
-import { getPatientPractitionerId, patientBelongsToPractitioner } from '@/lib/practitioners'
+import {
+  getPatientPractitionerId,
+  patientBelongsToPractitioner,
+  setPatientPractitionerId,
+} from '@/lib/practitioners'
+import { FhirPatientSchema } from '@/schemas/fhir/patient'
+import type { Booking, BookingStatus } from '@/models/booking'
 import type { TrashMetadata } from '@/models/lifecycle'
+import type { FhirPatient } from '@/models/patient'
+import type { Session, TcmFindings } from '@/models/session'
 import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm'
 
 const RESTORE_WINDOW_DAYS = 30
@@ -58,11 +66,19 @@ const publicSessionIdByDatabaseId = Object.fromEntries(
 const publicServiceIdByDatabaseId = Object.fromEntries(
   Object.entries(databaseServiceIdByPublicId).map(([publicId, databaseId]) => [databaseId, publicId]),
 ) as Record<string, string>
+const publicPractitionerIdByDatabaseId = Object.fromEntries(
+  Object.entries(databasePractitionerIdByPublicId).map(([publicId, databaseId]) => [databaseId, publicId]),
+) as Record<string, string>
 
 type PatientRow = typeof patients.$inferSelect
 type BookingRow = typeof bookings.$inferSelect
 type SessionRow = typeof sessions.$inferSelect
 type ServiceRow = typeof servicesTable.$inferSelect
+
+type ExportPublicIdMaps = {
+  servicePublicIds: Map<string, string>
+  bookingPublicIds: Map<string, string>
+}
 
 function databasePractitionerId(practitionerId: string) {
   return databasePractitionerIdByPublicId[
@@ -100,6 +116,10 @@ function publicSessionIdForRow(row: SessionRow) {
 
 function publicServiceIdForRow(row: ServiceRow) {
   return row.publicId ?? publicServiceIdByDatabaseId[row.id] ?? row.id
+}
+
+function publicPractitionerIdForDatabaseId(practitionerId: string) {
+  return publicPractitionerIdByDatabaseId[practitionerId] ?? practitionerId
 }
 
 function isUuid(value: string) {
@@ -365,6 +385,202 @@ function removeRuntimeService(practitionerId: string, serviceRow: ServiceRow) {
 
 function allRowsExpired(rows: Array<{ restoreUntil: Date | null }>, now: Date) {
   return rows.every(row => row.restoreUntil && row.restoreUntil.getTime() < now.getTime())
+}
+
+function asFhirJson(value: unknown): Partial<FhirPatient> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Partial<FhirPatient>)
+    : {}
+}
+
+function validGender(value: string | null) {
+  return value === 'male' ||
+    value === 'female' ||
+    value === 'other' ||
+    value === 'prefer_not_to_say'
+    ? value
+    : undefined
+}
+
+function toExportPatient(row: PatientRow): FhirPatient {
+  const publicId = publicPatientIdForRow(row)
+  const source = asFhirJson(row.fhirJson)
+  const displayName = row.displayName || publicId
+  const patient: FhirPatient = {
+    ...source,
+    resourceType: 'Patient',
+    id: publicId,
+    active: row.active,
+    meta: source.meta ?? {
+      lastUpdated: row.updatedAt?.toISOString(),
+    },
+    name:
+      source.name && source.name.length > 0
+        ? source.name
+        : [
+            {
+              text: displayName,
+              family: row.lastName ?? undefined,
+              given: row.firstName ? [row.firstName] : undefined,
+            },
+          ],
+    birthDate: source.birthDate ?? row.birthDate ?? undefined,
+    gender: source.gender ?? validGender(row.gender),
+    telecom:
+      source.telecom ??
+      [
+        row.phone ? { system: 'phone' as const, value: row.phone } : null,
+        row.email ? { system: 'email' as const, value: row.email } : null,
+      ].filter((item): item is NonNullable<typeof item> => Boolean(item)),
+    communication:
+      source.communication ??
+      (row.preferredLanguage
+        ? [{ language: { text: row.preferredLanguage }, preferred: true }]
+        : undefined),
+  }
+
+  return FhirPatientSchema.parse(
+    setPatientPractitionerId(patient, publicPractitionerIdForDatabaseId(row.practitionerId)),
+  )
+}
+
+function isoOrUndefined(value?: Date | null) {
+  return value ? value.toISOString() : undefined
+}
+
+function bookingTrashMetadataForExport(row: BookingRow, practitionerId: string): Booking['trashMetadata'] {
+  if (!row.deletedAt || !row.restoreUntil) return undefined
+  return {
+    deletedAt: row.deletedAt.toISOString(),
+    restoreUntil: row.restoreUntil.toISOString(),
+    deletedByPractitionerId:
+      (row.deletedByPractitionerId && publicPractitionerIdForDatabaseId(row.deletedByPractitionerId)) ??
+      practitionerId,
+    deletionGroupId: row.deletionGroupId ?? `db-booking-trash-${row.id}`,
+    deletionType: (row.deletionType as TrashMetadata['deletionType'] | null) ?? 'booking',
+    deletionReason: row.deletionReason ?? undefined,
+  }
+}
+
+function sessionTrashMetadataForExport(row: SessionRow, practitionerId: string): Session['trashMetadata'] {
+  if (!row.deletedAt || !row.restoreUntil) return undefined
+  return {
+    deletedAt: row.deletedAt.toISOString(),
+    restoreUntil: row.restoreUntil.toISOString(),
+    deletedByPractitionerId:
+      (row.deletedByPractitionerId && publicPractitionerIdForDatabaseId(row.deletedByPractitionerId)) ??
+      practitionerId,
+    deletionGroupId: row.deletionGroupId ?? `db-session-trash-${row.id}`,
+    deletionType: (row.deletionType as TrashMetadata['deletionType'] | null) ?? 'session',
+    deletionReason: row.deletionReason ?? undefined,
+  }
+}
+
+function toExportBooking(
+  row: BookingRow,
+  patientPublicId: string,
+  maps: ExportPublicIdMaps,
+): Booking {
+  const practitionerId = publicPractitionerIdForDatabaseId(row.practitionerId)
+  return {
+    id: publicBookingIdForRow(row),
+    code: row.code,
+    practitionerId,
+    patientId: patientPublicId,
+    serviceId: row.serviceId
+      ? maps.servicePublicIds.get(row.serviceId) ?? publicServiceIdByDatabaseId[row.serviceId] ?? ''
+      : '',
+    serviceName: row.serviceName,
+    serviceDurationMinutes: row.serviceDurationMinutes,
+    resource: row.resource ?? undefined,
+    start: row.startAt.toISOString(),
+    end: row.endAt.toISOString(),
+    status: row.status as BookingStatus,
+    notes: row.notes ?? undefined,
+    externalSource: (row.externalSource as Booking['externalSource']) ?? null,
+    externalCalendarId: row.externalCalendarId ?? null,
+    externalEventId: row.externalEventId ?? null,
+    externalSyncStatus: (row.externalSyncStatus as Booking['externalSyncStatus']) ?? null,
+    externalLastSyncedAt: isoOrUndefined(row.externalLastSyncedAt),
+    statusUpdatedAt: isoOrUndefined(row.statusUpdatedAt),
+    trashMetadata: bookingTrashMetadataForExport(row, practitionerId),
+  }
+}
+
+function toExportSession(
+  row: SessionRow,
+  patientPublicId: string,
+  maps: ExportPublicIdMaps,
+): Session {
+  const practitionerId = publicPractitionerIdForDatabaseId(row.practitionerId)
+  return {
+    id: publicSessionIdForRow(row),
+    practitionerId,
+    patientId: patientPublicId,
+    bookingId: row.bookingId
+      ? maps.bookingPublicIds.get(row.bookingId) ?? publicBookingIdByDatabaseId[row.bookingId] ?? row.bookingId
+      : null,
+    serviceId: row.serviceId
+      ? maps.servicePublicIds.get(row.serviceId) ?? publicServiceIdByDatabaseId[row.serviceId] ?? undefined
+      : undefined,
+    serviceName: row.serviceName ?? undefined,
+    startDateTime: row.startAt.toISOString(),
+    chiefComplaint: row.chiefComplaint,
+    treatmentSummary: row.treatmentSummary ?? undefined,
+    outcome: row.outcome ?? undefined,
+    treatmentNotes: row.treatmentNotes ?? undefined,
+    painScore: row.painScore ?? undefined,
+    tcmDiagnosis: row.tcmDiagnosis ?? undefined,
+    tcmFindings: row.tcmFindings as TcmFindings | undefined,
+    pointsUsed: row.pointsUsed ?? undefined,
+    techniques: row.techniques ?? undefined,
+    basicVitals: row.basicVitals as Session['basicVitals'],
+    trashMetadata: sessionTrashMetadataForExport(row, practitionerId),
+  }
+}
+
+async function loadExportPublicIdMaps(bookingRows: BookingRow[], sessionRows: SessionRow[]) {
+  const serviceIds = [
+    ...new Set(
+      [
+        ...bookingRows.map(row => row.serviceId),
+        ...sessionRows.map(row => row.serviceId),
+      ].filter((id): id is string => Boolean(id)),
+    ),
+  ]
+  const bookingIds = [
+    ...new Set(sessionRows.map(row => row.bookingId).filter((id): id is string => Boolean(id))),
+  ]
+  const servicePublicIds = new Map<string, string>()
+  const bookingPublicIds = new Map<string, string>()
+
+  if (serviceIds.length > 0) {
+    const serviceRows = await drizzleDb
+      .select({
+        id: servicesTable.id,
+        publicId: servicesTable.publicId,
+      })
+      .from(servicesTable)
+      .where(inArray(servicesTable.id, serviceIds))
+    for (const row of serviceRows) {
+      if (row.publicId) servicePublicIds.set(row.id, row.publicId)
+    }
+  }
+
+  if (bookingIds.length > 0) {
+    const linkedBookings = await drizzleDb
+      .select({
+        id: bookings.id,
+        publicId: bookings.publicId,
+      })
+      .from(bookings)
+      .where(inArray(bookings.id, bookingIds))
+    for (const row of linkedBookings) {
+      if (row.publicId) bookingPublicIds.set(row.id, row.publicId)
+    }
+  }
+
+  return { servicePublicIds, bookingPublicIds }
 }
 
 async function fallbackArchivePatient(
@@ -1424,8 +1640,50 @@ export async function purgeExpiredTrash(options: { now?: Date; practitionerId?: 
 }
 
 export async function buildPatientExport(practitionerId: string, patientId: string) {
-  await mirrorPatientForLifecycle(practitionerId, patientId)
-  await mirrorPatientBookingsForLifecycle(practitionerId, patientId)
-  await mirrorPatientSessionsForLifecycle(practitionerId, patientId)
-  return buildPatientFullExport(patientId, practitionerId)
+  const fallback = async () => {
+    await mirrorPatientForLifecycle(practitionerId, patientId)
+    await mirrorPatientBookingsForLifecycle(practitionerId, patientId)
+    await mirrorPatientSessionsForLifecycle(practitionerId, patientId)
+    return buildPatientFullExport(patientId, practitionerId)
+  }
+
+  if (isTestRuntime()) return fallback()
+
+  const dbPractitionerId = databasePractitionerId(practitionerId)
+  if (!dbPractitionerId) return fallback()
+
+  return runWithFallback(
+    async () => {
+      const patientRows = await drizzleDb
+        .select()
+        .from(patients)
+        .where(and(patientIdCondition(patientId), eq(patients.practitionerId, dbPractitionerId)))
+        .limit(1)
+
+      const patientRow = patientRows[0]
+      if (!patientRow) throw new Error('Patient not found')
+
+      const [bookingRows, sessionRows] = await Promise.all([
+        drizzleDb
+          .select()
+          .from(bookings)
+          .where(and(eq(bookings.practitionerId, dbPractitionerId), eq(bookings.patientId, patientRow.id))),
+        drizzleDb
+          .select()
+          .from(sessions)
+          .where(and(eq(sessions.practitionerId, dbPractitionerId), eq(sessions.patientId, patientRow.id))),
+      ])
+      const maps = await loadExportPublicIdMaps(bookingRows, sessionRows)
+      const publicPatientId = publicPatientIdForRow(patientRow)
+
+      return {
+        exportedAt: new Date().toISOString(),
+        practitionerId,
+        patient: toExportPatient(patientRow),
+        bookings: bookingRows.map(row => toExportBooking(row, publicPatientId, maps)),
+        sessions: sessionRows.map(row => toExportSession(row, publicPatientId, maps)),
+      }
+    },
+    fallback,
+  )
 }

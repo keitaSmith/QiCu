@@ -325,3 +325,13 @@ Expired patient-data groups are purged atomically by deleting grouped sessions f
 Expired individual booking, session, and service groups are purged one group at a time. Booking purge deletes only the expired trashed booking and relies on the nullable session booking foreign key to preserve session records. Session purge deletes only the expired trashed session. Service purge hard-deletes the expired trashed service; booking and session `service_id` references are nullable and use `on delete set null`, while service snapshot fields remain on historical bookings and sessions.
 
 Successful purge deletes the corresponding `deletion_groups` row after child records are removed. Orphaned expired deletion groups with no child records are cleaned up. Public IDs remain stable for non-purged records, and DB UUIDs are not exposed by the helper summary. Non-production/test fallback still uses the existing in-memory purge behavior when needed. Patient export remains deferred to Phase F.5 unless current behavior already satisfies the workflow.
+
+## Implementation Note: Phase F.5
+
+Phase F.5 moved patient export reads to Drizzle/PostgreSQL when the database is available. The export path now reads persisted patient, booking, and session rows directly instead of relying on transition mirror state, while preserving the existing export response shape: `exportedAt`, `practitionerId`, `patient`, `bookings`, and `sessions`.
+
+Exports keep the FHIR-like patient profile shape and use public IDs for patients, bookings, sessions, services, and booking links. Database UUIDs remain internal. Linked bookings and sessions are included from persisted rows for the scoped practitioner/patient, including archived/restored lifecycle state and trashed rows that still exist, matching the previous behavior of exporting linked runtime records until purge permanently removes them.
+
+Purged records are naturally omitted because they no longer exist in the database. Service snapshots remain readable because booking and session rows carry service snapshot fields such as service name and duration/name even when a service is disabled, trashed, or purged. Non-production/test fallback still preserves the existing in-memory export behavior where tests or custom runtime data need it.
+
+Phase F completion audit can run next.

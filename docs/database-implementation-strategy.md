@@ -517,3 +517,11 @@ Phase F.4 moved `purgeExpiredTrash` to a Drizzle-backed helper/admin operation w
 The purge helper permanently removes only expired Trash records whose deletion group restore window has passed. Patient-data groups are purged atomically in foreign-key-safe order: grouped sessions, grouped bookings, grouped patient, then the deletion group. Individual booking, session, and service groups are purged independently after their child restore windows are verified as expired.
 
 Deletion groups are removed only after their child records are purged, and expired orphan deletion groups are cleaned up. Service purge preserves historical booking/session snapshots because service references are nullable while snapshot names/durations remain on historical rows. Public IDs remain stable for remaining records, and DB UUIDs stay internal. Patient export remains the main Phase F.5 follow-up.
+
+## Implementation note: Phase F.5 DB-backed patient export
+
+Phase F.5 moved full patient export reads to Drizzle/PostgreSQL when the database is available. The export response shape remains unchanged and includes the FHIR-like patient profile plus linked bookings and sessions for the scoped practitioner/patient.
+
+Exported records use public IDs, not database UUIDs. Booking and session service snapshots remain readable even if services are disabled, trashed, or purged because snapshot fields remain on booking/session rows. Lifecycle-aware export now reflects persisted archive, Trash, restore, and purge state after app restart: existing linked rows are exported, while purged rows are omitted because they no longer exist.
+
+Non-production/test fallback still supports existing in-memory export behavior for test fixtures and custom runtime data. Phase F completion audit can run next.
