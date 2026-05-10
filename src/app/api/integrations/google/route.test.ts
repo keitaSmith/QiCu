@@ -29,12 +29,12 @@ function request(path: string, init: TestRequestInit = {}) {
   return new NextRequest(`http://localhost:3000${path}`, requestInit)
 }
 
-afterEach(() => {
-  googleIntegrationsRepository.disconnect(practitionerId)
+afterEach(async () => {
+  await googleIntegrationsRepository.disconnect(practitionerId)
 })
 
 test('Google status route returns public state without tokens', async () => {
-  googleIntegrationsRepository.saveIntegration(practitionerId, {
+  await googleIntegrationsRepository.saveIntegration(practitionerId, {
     connected: true,
     googleUserEmail: 'route@example.com',
     accessToken: 'fake-access-token',
@@ -68,7 +68,7 @@ test('Google calendar selection route preserves connected checks and response sh
     error: 'Google Calendar is not connected',
   })
 
-  googleIntegrationsRepository.saveIntegration(practitionerId, {
+  await googleIntegrationsRepository.saveIntegration(practitionerId, {
     connected: true,
     accessToken: 'fake-access-token',
     lastError: null,
@@ -93,7 +93,7 @@ test('Google calendar selection route preserves connected checks and response sh
 })
 
 test('Google disconnect route clears scoped integration', async () => {
-  googleIntegrationsRepository.saveIntegration(practitionerId, {
+  await googleIntegrationsRepository.saveIntegration(practitionerId, {
     connected: true,
     accessToken: 'fake-access-token',
   })
@@ -104,5 +104,5 @@ test('Google disconnect route clears scoped integration', async () => {
 
   assert.equal(response.status, 200)
   assert.deepEqual(await response.json(), { ok: true })
-  assert.equal(googleIntegrationsRepository.getStatus(practitionerId).connected, false)
+  assert.equal((await googleIntegrationsRepository.getStatus(practitionerId)).connected, false)
 })

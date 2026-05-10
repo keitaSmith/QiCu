@@ -35,9 +35,9 @@ export function getGoogleRedirectUri(req: NextRequest | Request) {
   return `${url.origin}/api/integrations/google/callback`
 }
 
-export function buildGoogleAuthUrl(practitionerId: string, req: NextRequest) {
+export async function buildGoogleAuthUrl(practitionerId: string, req: NextRequest) {
   const clientId = requireEnv('GOOGLE_CLIENT_ID')
-  const state = googleIntegrationsRepository.createOAuthState(practitionerId)
+  const state = await googleIntegrationsRepository.createOAuthState(practitionerId)
   const redirectUri = getGoogleRedirectUri(req)
 
   const params = new URLSearchParams({
@@ -149,6 +149,6 @@ export async function ensureFreshGoogleAccessToken(
     lastError: null,
   }
 
-  googleIntegrationsRepository.saveIntegration(practitionerId, updated)
+  await googleIntegrationsRepository.saveIntegration(practitionerId, updated)
   return updated
 }

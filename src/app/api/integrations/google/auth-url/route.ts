@@ -15,6 +15,6 @@ export async function GET(req: NextRequest) {
   }
 
   const practitionerId = await getPractitionerIdFromRequest(req)
-  const url = buildGoogleAuthUrl(practitionerId, req)
+  const url = await buildGoogleAuthUrl(practitionerId, req)
   return NextResponse.json({ url }, { status: 200 })
 }

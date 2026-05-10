@@ -77,6 +77,8 @@ Useful optional schema hardening for Phase G:
 
 Do not store raw Google tokens in PostgreSQL.
 
+Phase G.1 added `src/lib/google/googleTokenEncryption.ts` as a preflight utility only. It is not wired into OAuth routes, Google repositories, sync helpers, or database persistence yet.
+
 Recommended Phase G token strategy:
 
 - Use environment-based authenticated encryption, for example AES-256-GCM through Node `crypto`.
@@ -86,6 +88,14 @@ Recommended Phase G token strategy:
 - Never log plaintext tokens, encrypted token payloads, refresh responses, or authorization headers.
 - Never seed real tokens. Development seeds should continue to omit Google integration rows or use fake test-only values only in isolated tests.
 - Public status responses must continue to omit all token fields.
+
+`GOOGLE_TOKEN_ENCRYPTION_KEY` should be a strong 32-byte secret encoded as base64 or base64url. One suitable local generation command is:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
+
+The key is not required during normal app boot in Phase G.1 because runtime Google token persistence is not enabled yet. It should become mandatory only for code paths that encrypt/decrypt persisted Google tokens in a later phase. Once token persistence is enabled, losing or rotating this key without a migration plan will make existing encrypted tokens undecryptable.
 
 Missing key behavior:
 
@@ -111,6 +121,8 @@ Disconnect behavior:
 
 OAuth state is currently in memory and is consumed once. App restart breaks callback completion because pending state disappears.
 
+Phase G.2 moved OAuth state creation and consumption behind DB-backed repository internals when PostgreSQL is available. OAuth routes still call the same helper/repository seam and keep the same response behavior, but `createOAuthState` now persists a short-lived row in `oauth_states` and `consumeOAuthState` atomically marks an unexpired, unconsumed row as consumed.
+
 Recommended Phase G behavior:
 
 - Persist OAuth states in `oauth_states`.
@@ -123,9 +135,13 @@ Recommended Phase G behavior:
 
 If PKCE is added later, bind the code verifier to the state record and protect it with the same encryption rules as tokens.
 
+Phase G.2 did not add PKCE, a scheduler, a cleanup route, or a UI. It also did not move Google integration records, selected calendar state, connected status, or token persistence to PostgreSQL. Non-production/test fallback still uses the in-memory OAuth state helper when the database is unavailable, with the same expiry and one-time-use semantics.
+
 ## Integration Status And Selected Calendar Design
 
 DB-backed status should read from `google_integrations` through `googleIntegrationsRepository` and return the same public route payload as today.
+
+Phase G.3 moved non-secret Google integration metadata behind DB-backed repository internals where safe. `saveIntegration` persists connected account email, selected calendar metadata, connected flag metadata, last error, and timestamps to `google_integrations` when PostgreSQL is available, while keeping token-bearing access/refresh values only in the existing in-memory runtime store.
 
 Selected calendar behavior should:
 
@@ -135,7 +151,9 @@ Selected calendar behavior should:
 - Continue to require a connected integration before saving calendar selection.
 - Keep calendar list behavior dependent on valid Google credentials.
 
-Disconnect should update the integration row instead of deleting public practitioner state from memory, while preserving the current route response `{ ok: true }`.
+Disconnect now clears the in-memory token-bearing integration and marks the DB metadata row disconnected when PostgreSQL is available. It also clears selected calendar metadata, token encrypted columns, token expiry, last error, and connected timestamp defensively. The route response remains `{ ok: true }`.
+
+Public status still preserves current usable-token semantics. It may read persisted non-secret email/calendar metadata, but it only reports `connected: true` while the current runtime process still has a usable token-bearing integration record. This avoids a misleading "connected after restart" state before encrypted token persistence is implemented in Phase G.4.
 
 ## Booking Sync Behavior Audit
 
@@ -177,9 +195,9 @@ Behavior to preserve:
 
 ## Recommended Phase G Implementation Order
 
-1. Phase G.1: Add a token encryption utility and guarded configuration checks. Confirm no schema changes are required unless PKCE code verifier storage is added.
-2. Phase G.2: Move OAuth state create/consume to DB-backed repository methods with expiry and one-time consumption.
-3. Phase G.3: Move public integration status, selected calendar, connected account metadata, and disconnect to DB-backed repository methods without persisting plaintext tokens.
+1. Phase G.1: Add a token encryption utility and guarded configuration checks. Confirm no schema changes are required unless PKCE code verifier storage is added. Complete: encryption utility and tests exist, no runtime token persistence was added.
+2. Phase G.2: Move OAuth state create/consume to DB-backed repository methods with expiry and one-time consumption. Complete: OAuth state rows now use `oauth_states` when PostgreSQL is available; route behavior is unchanged.
+3. Phase G.3: Move public integration status, selected calendar, connected account metadata, and disconnect to DB-backed repository methods without persisting plaintext tokens. Complete: non-secret metadata is persisted where safe, while usable-token connection state remains runtime-only until encrypted token persistence lands.
 4. Phase G.4: Implement encrypted token persistence and token refresh update behavior.
 5. Phase G.5: Verify booking create/update/delete sync, calendar list, events preview, and reconcile against DB-backed integration state.
 6. Phase G completion audit.

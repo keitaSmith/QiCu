@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     const integration = googleIntegrationsRepository.getIntegration(practitionerId)
 
     if (!integration.selectedCalendarId && calendars[0]) {
-      googleIntegrationsRepository.saveIntegration(practitionerId, {
+      await googleIntegrationsRepository.saveIntegration(practitionerId, {
         ...integration,
         connected: true,
         selectedCalendarId: calendars[0].id,

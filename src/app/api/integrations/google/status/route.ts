@@ -6,7 +6,7 @@ import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrat
 
 export async function GET(req: NextRequest) {
   const practitionerId = await getPractitionerIdFromRequest(req)
-  const status = googleIntegrationsRepository.getStatus(practitionerId)
+  const status = await googleIntegrationsRepository.getStatus(practitionerId)
 
   return NextResponse.json(
     {

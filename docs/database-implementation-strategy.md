@@ -543,3 +543,29 @@ The Phase G.0 readiness audit documented the remaining Google integration persis
 The existing schema already includes `google_integrations`, `oauth_states`, and booking external sync fields. A minimal Phase G implementation can use those tables, but encrypted token handling must be implemented before real access or refresh tokens are persisted. OAuth states should become short-lived, practitioner-scoped, one-time DB records, and selected calendar/status/disconnect behavior should move behind the repository without changing response shapes.
 
 Google booking create/update/delete fallback behavior, import preview, reconcile, public API response shapes, public IDs, and the no-token-public-response rule must remain stable. No scheduler, cron sync job, dashboard purge/sync UI, auth, email, or real token seed data was added.
+
+## Implementation note: Phase G.1 Google token encryption preflight
+
+Phase G.1 added a standalone Google token encryption utility using AES-256-GCM with versioned payloads suitable for future `google_integrations.access_token_encrypted` and `google_integrations.refresh_token_encrypted` storage. The utility validates `GOOGLE_TOKEN_ENCRYPTION_KEY` only when encryption/decryption is called, so normal app boot and current in-memory Google behavior do not require the key yet.
+
+`GOOGLE_TOKEN_ENCRYPTION_KEY` must be a strong 32-byte secret encoded as base64 or base64url. A suitable local generation command is `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. Losing or rotating this key without a migration plan will make persisted encrypted tokens undecryptable once token persistence is enabled.
+
+No Google runtime persistence was added in Phase G.1. OAuth state remains in-memory, OAuth routes and Google sync behavior are unchanged, real Google tokens are not persisted to PostgreSQL, API response shapes are unchanged, and no schema migration was needed because the existing Google tables already have encrypted token text columns and OAuth state expiry/consumption fields.
+
+## Implementation note: Phase G.2 DB-backed OAuth state
+
+Phase G.2 moved Google OAuth state creation and consumption behind DB-backed `googleIntegrationsRepository` internals when PostgreSQL is available. `createOAuthState` now persists short-lived practitioner-scoped rows in `oauth_states`, and `consumeOAuthState` atomically consumes only unexpired, unconsumed state rows while returning the same public practitioner ID shape expected by the callback flow.
+
+OAuth route behavior and response shapes remain unchanged. Expired, missing, and already consumed states are rejected, and opportunistic cleanup of expired/consumed OAuth state rows happens during state creation without adding a scheduler, cron job, cleanup route, or UI.
+
+Real Google access/refresh/ID tokens are still not persisted, `googleTokenEncryption` is not wired into runtime token storage yet, and Google integration status, selected calendar, connected account metadata, and token state remain in-memory until later Phase G work. No schema migration was needed because the existing `oauth_states` table already has practitioner scoping, expiry, and consumed timestamp fields.
+
+## Implementation note: Phase G.3 Google integration metadata
+
+Phase G.3 moved non-secret Google integration metadata behind DB-backed `googleIntegrationsRepository` internals when PostgreSQL is available. The repository now persists practitioner-scoped connected account email, selected calendar ID/name, connected metadata, last error, and timestamps to `google_integrations` while preserving the existing in-memory token-bearing runtime record for actual Google API operations.
+
+Selected calendar saves are now mirrored to `google_integrations` for the scoped practitioner, and disconnect marks DB metadata disconnected while clearing selected calendar metadata, token encrypted columns, token expiry, last error, and connected timestamp. Disconnect also clears the in-memory runtime integration so the current process becomes disconnected immediately.
+
+No real access tokens, refresh tokens, ID tokens, authorization codes, encrypted tokens, token refresh responses, or authorization headers are persisted in Phase G.3. Public status shape is unchanged and does not expose tokens. To avoid a misleading connected-after-restart state before encrypted token persistence exists, status only reports `connected: true` when the current runtime still has a usable in-memory token-bearing integration; full restart-persistent usable Google connection remains Phase G.4.
+
+OAuth state remains DB-backed from Phase G.2. OAuth routes, Google sync behavior, calendar list behavior, import/reconcile response shapes, dashboard UI, and booking workflows remain unchanged. No schema migration, PKCE, scheduler, cron job, or cleanup UI was added.

@@ -5,6 +5,6 @@ import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrat
 
 export async function POST(req: NextRequest) {
   const practitionerId = await getPractitionerIdFromRequest(req)
-  googleIntegrationsRepository.disconnect(practitionerId)
+  await googleIntegrationsRepository.disconnect(practitionerId)
   return NextResponse.json({ ok: true }, { status: 200 })
 }

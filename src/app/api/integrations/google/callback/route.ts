@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  const pending = googleIntegrationsRepository.consumeOAuthState(state)
+  const pending = await googleIntegrationsRepository.consumeOAuthState(state)
   if (!pending) {
     return new NextResponse(closeWindowHtml('Google auth state expired. Please try again.', false), {
       status: 400,
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
     const tokens = await exchangeGoogleAuthCode(code, req)
     const email = await fetchGoogleUserEmail(tokens.access_token)
 
-    googleIntegrationsRepository.saveIntegration(pending.practitionerId, {
+    await googleIntegrationsRepository.saveIntegration(pending.practitionerId, {
       connected: true,
       googleUserEmail: email,
       accessToken: tokens.access_token,

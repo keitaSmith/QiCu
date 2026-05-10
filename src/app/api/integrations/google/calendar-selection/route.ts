@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Google Calendar is not connected' }, { status: 400 })
   }
 
-  const updated = googleIntegrationsRepository.saveSelectedCalendar(practitionerId, {
+  const updated = await googleIntegrationsRepository.saveSelectedCalendar(practitionerId, {
     calendarId,
     calendarName: body.calendarName,
   })
