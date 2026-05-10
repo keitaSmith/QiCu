@@ -501,3 +501,11 @@ Phase F.2 moved patient archive/reactivate and grouped Delete Patient Data write
 Delete Patient Data now persists one `deletion_groups` row plus matching Trash metadata on the patient, linked bookings, and linked sessions. Grouped patient restore verifies practitioner scope and restore windows, then clears the group metadata atomically. Public IDs remain the API/UI identifiers, and database UUIDs stay internal to repository logic.
 
 Individual booking/session/service Trash write migrations remain deferred to Phase F.3, purge remains deferred to Phase F.4, and Google integration remains in-memory. API routes continue to call repositories/helpers rather than importing Drizzle directly.
+
+## Implementation note: Phase F.3 individual lifecycle transactions
+
+Phase F.3 moved individual booking, session, and service Trash delete/restore writes into Drizzle-backed `lifecycleRepository` transactions when PostgreSQL is available. Each individual delete creates one `deletion_groups` row with the matching deletion type and persists Trash metadata on the affected record.
+
+Booking Trash delete preserves current relationship behavior by unlinking active linked sessions without deleting session records. Session Trash delete preserves the database canonical `sessions.booking_id` relationship on the trashed session row while clearing the transitional runtime booking/session link where current behavior expects it. Service Trash delete remains separate from service disable, and restoring a service does not change its disabled/active state.
+
+The DB-backed Trash read model can now reconstruct individual booking/session/service recovery items after restart. Patient-data grouped children remain suppressed from top-level individual records. Purge remains deferred to Phase F.4, patient export remains deferred to Phase F.5, and Google integration remains in-memory.

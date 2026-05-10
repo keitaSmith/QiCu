@@ -78,7 +78,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
   }
 
   const impact = lifecycleRepository.getServiceLifecycleImpact(practitionerId, serviceId)
-  const result = lifecycleRepository.moveServiceToTrash(practitionerId, serviceId)
+  const result = await lifecycleRepository.moveServiceToTrash(practitionerId, serviceId)
   return NextResponse.json(
     {
       ok: true,

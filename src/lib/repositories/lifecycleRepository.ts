@@ -13,10 +13,23 @@ import {
   restoreDeletionGroup as restoreDeletionGroupInMemory,
 } from '@/lib/dataLifecycle'
 import { BOOKINGS } from '@/data/bookings'
+import { servicesStore } from '@/data/servicesStore'
 import { sessionsStore } from '@/data/sessionsStore'
 import { drizzleDb } from '@/db/client'
-import { bookings, deletionGroups, patients, sessions } from '@/db/schema'
-import { demoPatientIds, demoPractitionerIds } from '@/db/seeds/ids'
+import {
+  bookings,
+  deletionGroups,
+  patients,
+  services as servicesTable,
+  sessions,
+} from '@/db/schema'
+import {
+  demoBookingIds,
+  demoPatientIds,
+  demoPractitionerIds,
+  demoServiceIds,
+  demoSessionIds,
+} from '@/db/seeds/ids'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
 import * as sessionsRepository from '@/lib/repositories/sessionsRepository'
 import * as servicesRepository from '@/lib/repositories/servicesRepository'
@@ -29,14 +42,27 @@ import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 const RESTORE_WINDOW_DAYS = 30
 
 const databasePractitionerIdByPublicId = demoPractitionerIds
+const databaseBookingIdByPublicId = demoBookingIds
 const databasePatientIdByPublicId = demoPatientIds
+const databaseServiceIdByPublicId = demoServiceIds
+const databaseSessionIdByPublicId = demoSessionIds
 const publicPatientIdByDatabaseId = Object.fromEntries(
   Object.entries(databasePatientIdByPublicId).map(([publicId, databaseId]) => [databaseId, publicId]),
+) as Record<string, string>
+const publicBookingIdByDatabaseId = Object.fromEntries(
+  Object.entries(databaseBookingIdByPublicId).map(([publicId, databaseId]) => [databaseId, publicId]),
+) as Record<string, string>
+const publicSessionIdByDatabaseId = Object.fromEntries(
+  Object.entries(databaseSessionIdByPublicId).map(([publicId, databaseId]) => [databaseId, publicId]),
+) as Record<string, string>
+const publicServiceIdByDatabaseId = Object.fromEntries(
+  Object.entries(databaseServiceIdByPublicId).map(([publicId, databaseId]) => [databaseId, publicId]),
 ) as Record<string, string>
 
 type PatientRow = typeof patients.$inferSelect
 type BookingRow = typeof bookings.$inferSelect
 type SessionRow = typeof sessions.$inferSelect
+type ServiceRow = typeof servicesTable.$inferSelect
 
 function databasePractitionerId(practitionerId: string) {
   return databasePractitionerIdByPublicId[
@@ -48,8 +74,32 @@ function databasePatientId(patientId: string) {
   return databasePatientIdByPublicId[patientId as keyof typeof databasePatientIdByPublicId] ?? patientId
 }
 
+function databaseBookingId(bookingId: string) {
+  return databaseBookingIdByPublicId[bookingId as keyof typeof databaseBookingIdByPublicId] ?? bookingId
+}
+
+function databaseSessionId(sessionId: string) {
+  return databaseSessionIdByPublicId[sessionId as keyof typeof databaseSessionIdByPublicId] ?? sessionId
+}
+
+function databaseServiceId(serviceId: string) {
+  return databaseServiceIdByPublicId[serviceId as keyof typeof databaseServiceIdByPublicId] ?? serviceId
+}
+
 function publicPatientIdForRow(row: PatientRow) {
   return row.publicId ?? publicPatientIdByDatabaseId[row.id] ?? row.id
+}
+
+function publicBookingIdForRow(row: BookingRow) {
+  return row.publicId ?? publicBookingIdByDatabaseId[row.id] ?? row.id
+}
+
+function publicSessionIdForRow(row: SessionRow) {
+  return row.publicId ?? publicSessionIdByDatabaseId[row.id] ?? row.id
+}
+
+function publicServiceIdForRow(row: ServiceRow) {
+  return row.publicId ?? publicServiceIdByDatabaseId[row.id] ?? row.id
 }
 
 function isUuid(value: string) {
@@ -62,6 +112,30 @@ function patientIdCondition(patientId: string) {
     return or(eq(patients.id, dbPatientId), eq(patients.publicId, patientId))
   }
   return eq(patients.publicId, patientId)
+}
+
+function bookingIdCondition(bookingId: string) {
+  const dbBookingId = databaseBookingId(bookingId)
+  if (dbBookingId !== bookingId || isUuid(bookingId)) {
+    return or(eq(bookings.id, dbBookingId), eq(bookings.publicId, bookingId))
+  }
+  return eq(bookings.publicId, bookingId)
+}
+
+function sessionIdCondition(sessionId: string) {
+  const dbSessionId = databaseSessionId(sessionId)
+  if (dbSessionId !== sessionId || isUuid(sessionId)) {
+    return or(eq(sessions.id, dbSessionId), eq(sessions.publicId, sessionId))
+  }
+  return eq(sessions.publicId, sessionId)
+}
+
+function serviceIdCondition(serviceId: string) {
+  const dbServiceId = databaseServiceId(serviceId)
+  if (dbServiceId !== serviceId || isUuid(serviceId)) {
+    return or(eq(servicesTable.id, dbServiceId), eq(servicesTable.publicId, serviceId))
+  }
+  return eq(servicesTable.publicId, serviceId)
 }
 
 async function runWithFallback<T>(query: () => Promise<T>, fallback: () => Promise<T> | T) {
@@ -111,6 +185,7 @@ function trashMetadataFrom(
   deletionGroupId: string,
   deletedAt: Date,
   restoreUntil: Date,
+  deletionType: TrashMetadata['deletionType'] = 'patient-data',
   deletionReason?: string | null,
 ): TrashMetadata {
   return {
@@ -118,7 +193,7 @@ function trashMetadataFrom(
     restoreUntil: restoreUntil.toISOString(),
     deletedByPractitionerId: practitionerId,
     deletionGroupId,
-    deletionType: 'patient-data',
+    deletionType,
     deletionReason: deletionReason ?? undefined,
   }
 }
@@ -142,6 +217,18 @@ function cancelRuntimeBookings(bookingRows: BookingRow[], statusUpdatedAt: Date)
       booking.statusUpdatedAt = statusUpdatedAt.toISOString()
     }
   }
+}
+
+function runtimeBooking(practitionerId: string, bookingId: string) {
+  return BOOKINGS.find(booking => booking.id === bookingId && booking.practitionerId === practitionerId)
+}
+
+function runtimeSession(practitionerId: string, sessionId: string) {
+  return sessionsStore.find(session => session.id === sessionId && session.practitionerId === practitionerId)
+}
+
+function runtimeService(practitionerId: string, serviceId: string) {
+  return servicesStore.find(service => service.id === serviceId && service.practitionerId === practitionerId)
 }
 
 function applyTrashToRuntime(
@@ -188,6 +275,45 @@ function clearTrashFromRuntime(practitionerId: string, deletionGroupId: string) 
   for (const session of sessionsStore) {
     if (session.practitionerId === practitionerId && session.trashMetadata?.deletionGroupId === deletionGroupId) {
       delete session.trashMetadata
+    }
+  }
+
+  for (const service of servicesStore) {
+    if (service.practitionerId === practitionerId && service.trashMetadata?.deletionGroupId === deletionGroupId) {
+      delete service.trashMetadata
+    }
+  }
+}
+
+function applyBookingTrashToRuntime(practitionerId: string, bookingRow: BookingRow, metadata: TrashMetadata) {
+  const booking = runtimeBooking(practitionerId, publicBookingIdForRow(bookingRow))
+  if (booking) booking.trashMetadata = metadata
+}
+
+function applySessionTrashToRuntime(practitionerId: string, sessionRow: SessionRow, metadata: TrashMetadata) {
+  const session = runtimeSession(practitionerId, publicSessionIdForRow(sessionRow))
+  if (session) session.trashMetadata = metadata
+}
+
+function applyServiceTrashToRuntime(practitionerId: string, serviceRow: ServiceRow, metadata: TrashMetadata) {
+  const service = runtimeService(practitionerId, publicServiceIdForRow(serviceRow))
+  if (service) service.trashMetadata = metadata
+}
+
+function unlinkRuntimeSessionsFromBooking(practitionerId: string, bookingRow: BookingRow) {
+  const publicBookingId = publicBookingIdForRow(bookingRow)
+  for (const session of sessionsStore) {
+    if (session.practitionerId === practitionerId && session.bookingId === publicBookingId && !session.trashMetadata) {
+      session.bookingId = null
+    }
+  }
+}
+
+function clearRuntimeBookingSessionLink(practitionerId: string, sessionRow: SessionRow) {
+  const publicSessionId = publicSessionIdForRow(sessionRow)
+  for (const booking of BOOKINGS) {
+    if (booking.practitionerId === practitionerId && booking.sessionId === publicSessionId && !booking.trashMetadata) {
+      booking.sessionId = undefined
     }
   }
 }
@@ -554,15 +680,108 @@ export async function moveBookingToTrash(
   bookingId: string,
   options: { now?: Date } = {},
 ) {
-  await bookingsRepository.getById(practitionerId, bookingId)
-  await sessionsRepository.findByBookingId(practitionerId, bookingId)
-  const linkedSessionIds = sessionsStore
-    .filter(session => session.bookingId === bookingId && session.practitionerId === practitionerId)
-    .map(session => session.id)
-  const result = moveBookingToTrashInMemory(bookingId, practitionerId, options.now)
-  await bookingsRepository.syncRuntimeBookingToDatabase(practitionerId, bookingId)
-  await syncSessionsToDatabase(practitionerId, linkedSessionIds)
-  return result
+  const fallback = async () => {
+    await bookingsRepository.getById(practitionerId, bookingId)
+    await sessionsRepository.findByBookingId(practitionerId, bookingId)
+    const linkedSessionIds = sessionsStore
+      .filter(session => session.bookingId === bookingId && session.practitionerId === practitionerId)
+      .map(session => session.id)
+    const result = moveBookingToTrashInMemory(bookingId, practitionerId, options.now)
+    await bookingsRepository.syncRuntimeBookingToDatabase(practitionerId, bookingId)
+    await syncSessionsToDatabase(practitionerId, linkedSessionIds)
+    return result
+  }
+
+  const dbPractitionerId = databasePractitionerId(practitionerId)
+  if (!dbPractitionerId) return fallback()
+
+  return runWithFallback(
+    async () => {
+      await bookingsRepository.getById(practitionerId, bookingId)
+      await sessionsRepository.findByBookingId(practitionerId, bookingId)
+
+      const deletedAt = options.now ?? new Date()
+      const restoreUntil = restoreUntilFrom(deletedAt)
+      const result = await drizzleDb.transaction(async tx => {
+        const bookingRows = await tx
+          .select()
+          .from(bookings)
+          .where(
+            and(
+              bookingIdCondition(bookingId),
+              eq(bookings.practitionerId, dbPractitionerId),
+              isNull(bookings.deletedAt),
+            ),
+          )
+          .limit(1)
+        const bookingRow = bookingRows[0]
+        if (!bookingRow) throw new Error('Booking not found')
+
+        const linkedSessionRows = await tx
+          .select()
+          .from(sessions)
+          .where(
+            and(
+              eq(sessions.practitionerId, dbPractitionerId),
+              eq(sessions.bookingId, bookingRow.id),
+              isNull(sessions.deletedAt),
+            ),
+          )
+        const groupRows = await tx
+          .insert(deletionGroups)
+          .values({
+            practitionerId: dbPractitionerId,
+            deletionType: 'booking',
+            deletedAt,
+            restoreUntil,
+            deletedByPractitionerId: dbPractitionerId,
+          })
+          .returning()
+        const deletionGroupId = groupRows[0].id
+
+        await tx
+          .update(bookings)
+          .set({
+            deletedAt,
+            restoreUntil,
+            deletedByPractitionerId: dbPractitionerId,
+            deletionGroupId,
+            deletionType: 'booking',
+            deletionReason: null,
+            updatedAt: deletedAt,
+          })
+          .where(eq(bookings.id, bookingRow.id))
+
+        if (linkedSessionRows.length > 0) {
+          await tx
+            .update(sessions)
+            .set({
+              bookingId: null,
+              updatedAt: deletedAt,
+            })
+            .where(inArray(sessions.id, linkedSessionRows.map(session => session.id)))
+        }
+
+        return { bookingRow, deletionGroupId }
+      })
+
+      const metadata = trashMetadataFrom(
+        practitionerId,
+        result.deletionGroupId,
+        deletedAt,
+        restoreUntil,
+        'booking',
+      )
+      applyBookingTrashToRuntime(practitionerId, result.bookingRow, metadata)
+      unlinkRuntimeSessionsFromBooking(practitionerId, result.bookingRow)
+      return {
+        booking: runtimeBooking(practitionerId, publicBookingIdForRow(result.bookingRow)),
+        restoreUntil: restoreUntil.toISOString() as string | undefined,
+        deletionGroupId: result.deletionGroupId,
+      }
+    },
+    fallback,
+  )
 }
 
 export async function moveSessionToTrash(
@@ -570,22 +789,163 @@ export async function moveSessionToTrash(
   sessionId: string,
   options: { now?: Date } = {},
 ) {
-  await sessionsRepository.getById(practitionerId, sessionId)
-  const result = moveSessionToTrashInMemory(sessionId, practitionerId, options.now)
-  await sessionsRepository.syncRuntimeSessionToDatabase(practitionerId, sessionId)
-  return result
+  const fallback = async () => {
+    await sessionsRepository.getById(practitionerId, sessionId)
+    const result = moveSessionToTrashInMemory(sessionId, practitionerId, options.now)
+    await sessionsRepository.syncRuntimeSessionToDatabase(practitionerId, sessionId)
+    return result
+  }
+
+  const dbPractitionerId = databasePractitionerId(practitionerId)
+  if (!dbPractitionerId) return fallback()
+
+  return runWithFallback(
+    async () => {
+      await sessionsRepository.getById(practitionerId, sessionId)
+
+      const deletedAt = options.now ?? new Date()
+      const restoreUntil = restoreUntilFrom(deletedAt)
+      const result = await drizzleDb.transaction(async tx => {
+        const sessionRows = await tx
+          .select()
+          .from(sessions)
+          .where(
+            and(
+              sessionIdCondition(sessionId),
+              eq(sessions.practitionerId, dbPractitionerId),
+              isNull(sessions.deletedAt),
+            ),
+          )
+          .limit(1)
+        const sessionRow = sessionRows[0]
+        if (!sessionRow) throw new Error('Session not found')
+
+        const groupRows = await tx
+          .insert(deletionGroups)
+          .values({
+            practitionerId: dbPractitionerId,
+            deletionType: 'session',
+            deletedAt,
+            restoreUntil,
+            deletedByPractitionerId: dbPractitionerId,
+          })
+          .returning()
+        const deletionGroupId = groupRows[0].id
+
+        await tx
+          .update(sessions)
+          .set({
+            deletedAt,
+            restoreUntil,
+            deletedByPractitionerId: dbPractitionerId,
+            deletionGroupId,
+            deletionType: 'session',
+            deletionReason: null,
+            updatedAt: deletedAt,
+          })
+          .where(eq(sessions.id, sessionRow.id))
+
+        return { sessionRow, deletionGroupId }
+      })
+
+      const metadata = trashMetadataFrom(
+        practitionerId,
+        result.deletionGroupId,
+        deletedAt,
+        restoreUntil,
+        'session',
+      )
+      applySessionTrashToRuntime(practitionerId, result.sessionRow, metadata)
+      clearRuntimeBookingSessionLink(practitionerId, result.sessionRow)
+      return {
+        session: runtimeSession(practitionerId, publicSessionIdForRow(result.sessionRow)),
+        restoreUntil: restoreUntil.toISOString() as string | undefined,
+        deletionGroupId: result.deletionGroupId,
+      }
+    },
+    fallback,
+  )
 }
 
 export function getServiceLifecycleImpact(practitionerId: string, serviceId: string) {
   return getServiceLifecycleImpactInMemory(serviceId, practitionerId)
 }
 
-export function moveServiceToTrash(
+export async function moveServiceToTrash(
   practitionerId: string,
   serviceId: string,
   options: { now?: Date } = {},
 ) {
-  return moveServiceToTrashInMemory(serviceId, practitionerId, options.now)
+  const fallback = () => moveServiceToTrashInMemory(serviceId, practitionerId, options.now)
+  const dbPractitionerId = databasePractitionerId(practitionerId)
+  if (!dbPractitionerId) return fallback()
+
+  return runWithFallback(
+    async () => {
+      await servicesRepository.getById(practitionerId, serviceId)
+
+      const deletedAt = options.now ?? new Date()
+      const restoreUntil = restoreUntilFrom(deletedAt)
+      const result = await drizzleDb.transaction(async tx => {
+        const serviceRows = await tx
+          .select()
+          .from(servicesTable)
+          .where(
+            and(
+              serviceIdCondition(serviceId),
+              eq(servicesTable.practitionerId, dbPractitionerId),
+              isNull(servicesTable.deletedAt),
+            ),
+          )
+          .limit(1)
+        const serviceRow = serviceRows[0]
+        if (!serviceRow) throw new Error('Service not found')
+
+        const groupRows = await tx
+          .insert(deletionGroups)
+          .values({
+            practitionerId: dbPractitionerId,
+            deletionType: 'service',
+            deletedAt,
+            restoreUntil,
+            deletedByPractitionerId: dbPractitionerId,
+          })
+          .returning()
+        const deletionGroupId = groupRows[0].id
+
+        await tx
+          .update(servicesTable)
+          .set({
+            deletedAt,
+            restoreUntil,
+            deletedByPractitionerId: dbPractitionerId,
+            deletionGroupId,
+            deletionType: 'service',
+            deletionReason: null,
+            updatedAt: deletedAt,
+          })
+          .where(eq(servicesTable.id, serviceRow.id))
+
+        return { serviceRow, deletionGroupId }
+      })
+
+      const metadata = trashMetadataFrom(
+        practitionerId,
+        result.deletionGroupId,
+        deletedAt,
+        restoreUntil,
+        'service',
+      )
+      applyServiceTrashToRuntime(practitionerId, result.serviceRow, metadata)
+      return {
+        service: runtimeService(practitionerId, publicServiceIdForRow(result.serviceRow)),
+        restoreUntil: restoreUntil.toISOString() as string | undefined,
+        deletionGroupId: result.deletionGroupId,
+        impact: getServiceLifecycleImpactInMemory(serviceId, practitionerId),
+      }
+    },
+    fallback,
+  )
 }
 
 export async function disableService(practitionerId: string, serviceId: string) {
@@ -613,13 +973,131 @@ export async function restoreDeletionGroup(
             and(
               eq(deletionGroups.id, deletionGroupId),
               eq(deletionGroups.practitionerId, dbPractitionerId),
-              eq(deletionGroups.deletionType, 'patient-data'),
             ),
           )
           .limit(1)
 
         const group = groupRows[0]
         if (!group) throw new Error('Deletion group not found')
+
+        const groupRestoreExpired = !group.restoreUntil || group.restoreUntil.getTime() < now.getTime()
+        if (groupRestoreExpired) throw new Error('Restore window has expired')
+
+        if (group.deletionType === 'booking') {
+          const bookingRows = await tx
+            .select()
+            .from(bookings)
+            .where(
+              and(
+                eq(bookings.practitionerId, dbPractitionerId),
+                eq(bookings.deletionGroupId, deletionGroupId),
+              ),
+            )
+          if (bookingRows.length === 0) throw new Error('Deletion group not found')
+          const hasExpiredRecord = bookingRows.some(
+            row => !row.restoreUntil || row.restoreUntil.getTime() < now.getTime(),
+          )
+          if (hasExpiredRecord) throw new Error('Restore window has expired')
+
+          await tx
+            .update(bookings)
+            .set({
+              deletedAt: null,
+              restoreUntil: null,
+              deletedByPractitionerId: null,
+              deletionGroupId: null,
+              deletionType: null,
+              deletionReason: null,
+              updatedAt: now,
+            })
+            .where(inArray(bookings.id, bookingRows.map(booking => booking.id)))
+
+          return {
+            restored: bookingRows.length,
+            patientRows: [] as PatientRow[],
+            bookingRows,
+            sessionRows: [] as SessionRow[],
+            serviceRows: [] as ServiceRow[],
+          }
+        }
+
+        if (group.deletionType === 'session') {
+          const sessionRows = await tx
+            .select()
+            .from(sessions)
+            .where(
+              and(
+                eq(sessions.practitionerId, dbPractitionerId),
+                eq(sessions.deletionGroupId, deletionGroupId),
+              ),
+            )
+          if (sessionRows.length === 0) throw new Error('Deletion group not found')
+          const hasExpiredRecord = sessionRows.some(
+            row => !row.restoreUntil || row.restoreUntil.getTime() < now.getTime(),
+          )
+          if (hasExpiredRecord) throw new Error('Restore window has expired')
+
+          await tx
+            .update(sessions)
+            .set({
+              deletedAt: null,
+              restoreUntil: null,
+              deletedByPractitionerId: null,
+              deletionGroupId: null,
+              deletionType: null,
+              deletionReason: null,
+              updatedAt: now,
+            })
+            .where(inArray(sessions.id, sessionRows.map(session => session.id)))
+
+          return {
+            restored: sessionRows.length,
+            patientRows: [] as PatientRow[],
+            bookingRows: [] as BookingRow[],
+            sessionRows,
+            serviceRows: [] as ServiceRow[],
+          }
+        }
+
+        if (group.deletionType === 'service') {
+          const serviceRows = await tx
+            .select()
+            .from(servicesTable)
+            .where(
+              and(
+                eq(servicesTable.practitionerId, dbPractitionerId),
+                eq(servicesTable.deletionGroupId, deletionGroupId),
+              ),
+            )
+          if (serviceRows.length === 0) throw new Error('Deletion group not found')
+          const hasExpiredRecord = serviceRows.some(
+            row => !row.restoreUntil || row.restoreUntil.getTime() < now.getTime(),
+          )
+          if (hasExpiredRecord) throw new Error('Restore window has expired')
+
+          await tx
+            .update(servicesTable)
+            .set({
+              deletedAt: null,
+              restoreUntil: null,
+              deletedByPractitionerId: null,
+              deletionGroupId: null,
+              deletionType: null,
+              deletionReason: null,
+              updatedAt: now,
+            })
+            .where(inArray(servicesTable.id, serviceRows.map(service => service.id)))
+
+          return {
+            restored: serviceRows.length,
+            patientRows: [] as PatientRow[],
+            bookingRows: [] as BookingRow[],
+            sessionRows: [] as SessionRow[],
+            serviceRows,
+          }
+        }
+
+        if (group.deletionType !== 'patient-data') throw new Error('Deletion group not found')
 
         const patientRows = await tx
           .select()
@@ -692,7 +1170,13 @@ export async function restoreDeletionGroup(
             .where(inArray(sessions.id, sessionRows.map(session => session.id)))
         }
 
-        return { restored: totalRecords, patientRows }
+        return {
+          restored: totalRecords,
+          patientRows,
+          bookingRows,
+          sessionRows,
+          serviceRows: [] as ServiceRow[],
+        }
       })
 
       clearTrashFromRuntime(practitionerId, deletionGroupId)
@@ -704,6 +1188,15 @@ export async function restoreDeletionGroup(
         const publicPatientId = publicPatientIdForRow(patientRow)
         await bookingsRepository.listByPatient(practitionerId, publicPatientId)
         await sessionsRepository.listByPatient(practitionerId, publicPatientId)
+      }
+      for (const bookingRow of result.bookingRows) {
+        await bookingsRepository.getById(practitionerId, publicBookingIdForRow(bookingRow))
+      }
+      for (const sessionRow of result.sessionRows) {
+        await sessionsRepository.getById(practitionerId, publicSessionIdForRow(sessionRow))
+      }
+      for (const serviceRow of result.serviceRows) {
+        await servicesRepository.getById(practitionerId, publicServiceIdForRow(serviceRow))
       }
       return { restored: result.restored, deletionGroupId }
     },

@@ -197,7 +197,7 @@ test('service disable is separate from service Trash delete', async () => {
   assert.equal(disabled?.active, false)
   assert.equal(isTrashed(service), false)
 
-  const deleted = moveServiceToTrash(practitionerId, service.id)
+  const deleted = await moveServiceToTrash(practitionerId, service.id)
   assert.equal(isTrashed(deleted.service), true)
   assert.equal(deleted.impact.bookings, 0)
 })

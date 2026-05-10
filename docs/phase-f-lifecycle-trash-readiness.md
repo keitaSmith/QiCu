@@ -301,3 +301,15 @@ Patient archive now verifies practitioner scope, updates patient archive state w
 Grouped Delete Patient Data now creates a persisted `deletion_groups` row with deletion type `patient-data`, then applies the same `deleted_at`, `restore_until`, `deleted_by_practitioner_id`, `deletion_group_id`, and deletion type metadata to the patient, linked bookings, and linked sessions in one transaction. Grouped patient restore now verifies practitioner scope and restore windows, then clears Trash metadata from all grouped patient/bookings/sessions atomically. The Phase F.1 Trash read model can reconstruct grouped patient recovery from persisted DB state after restart.
 
 Individual booking, session, and service Trash delete/restore operations remain in the existing behavior path for Phase F.3. Purge remains deferred to Phase F.4, and patient export remains behavior-compatible with current repository mirroring until the later lifecycle-aware export step.
+
+## Implementation Note: Phase F.3
+
+Phase F.3 moved individual booking, session, and service Trash delete/restore writes into `lifecycleRepository` Drizzle transactions when PostgreSQL is available.
+
+Individual booking delete now creates a persisted `deletion_groups` row with deletion type `booking`, sets booking Trash metadata transactionally, and clears active linked sessions from that booking without deleting session records. Individual booking restore clears only that booking's Trash metadata. Trashed bookings remain excluded from active/default booking views and availability.
+
+Individual session delete now creates a persisted `deletion_groups` row with deletion type `session` and sets session Trash metadata transactionally while preserving the canonical `sessions.booking_id` relationship on the trashed session row. The transitional runtime `booking.sessionId` link is cleared where current behavior expects it. Individual session restore clears only that session's Trash metadata.
+
+Individual service delete now creates a persisted `deletion_groups` row with deletion type `service` and sets service Trash metadata transactionally. Service disable remains separate from service Trash delete, and restoring a service does not change its active/disabled state. Historical booking/session service snapshots remain readable.
+
+The Phase F.1 Trash read model can reconstruct individual booking, session, and service recovery items from persisted DB state after restart. Patient-data grouped children continue to be suppressed from top-level individual Trash records. Purge remains deferred to Phase F.4, and fully DB-backed lifecycle-aware export remains deferred to Phase F.5 unless current behavior already satisfies the workflow.
