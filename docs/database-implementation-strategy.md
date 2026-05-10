@@ -535,3 +535,11 @@ The Trash read model remains DB-backed and reconstructs grouped patient Trash it
 Public IDs remain stable, DB UUIDs remain internal, API response/export shapes remain stable, and API routes still do not import Drizzle directly. Google integration remains in-memory and should be handled in Phase G.
 
 Remaining transition mirrors in `patientsStore`, `BOOKINGS`, `sessionsStore`, and `servicesStore` still support test/non-production fallback and compatibility paths. A future cleanup can reduce those mirrors after the remaining Google/auth persistence boundaries are addressed.
+
+## Implementation note: Phase G.0 Google persistence readiness
+
+The Phase G.0 readiness audit documented the remaining Google integration persistence boundary in `docs/phase-g-google-persistence-readiness.md`. Google integration state, selected calendar state, and OAuth state still use the in-memory `googleIntegrationsRepository` wrapper today; no Google runtime state was migrated to PostgreSQL in this audit.
+
+The existing schema already includes `google_integrations`, `oauth_states`, and booking external sync fields. A minimal Phase G implementation can use those tables, but encrypted token handling must be implemented before real access or refresh tokens are persisted. OAuth states should become short-lived, practitioner-scoped, one-time DB records, and selected calendar/status/disconnect behavior should move behind the repository without changing response shapes.
+
+Google booking create/update/delete fallback behavior, import preview, reconcile, public API response shapes, public IDs, and the no-token-public-response rule must remain stable. No scheduler, cron sync job, dashboard purge/sync UI, auth, email, or real token seed data was added.
