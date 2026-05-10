@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import { afterEach, test } from 'node:test'
 
 import { NextRequest } from 'next/server'
@@ -9,6 +10,7 @@ import { POST as DISCONNECT } from './disconnect/route'
 import { GET as STATUS } from './status/route'
 
 const practitionerId = 'prac-tom-cook'
+const originalEncryptionKey = process.env.GOOGLE_TOKEN_ENCRYPTION_KEY
 
 type TestRequestInit = {
   method?: string
@@ -31,9 +33,15 @@ function request(path: string, init: TestRequestInit = {}) {
 
 afterEach(async () => {
   await googleIntegrationsRepository.disconnect(practitionerId)
+  if (originalEncryptionKey === undefined) {
+    delete process.env.GOOGLE_TOKEN_ENCRYPTION_KEY
+  } else {
+    process.env.GOOGLE_TOKEN_ENCRYPTION_KEY = originalEncryptionKey
+  }
 })
 
 test('Google status route returns public state without tokens', async () => {
+  process.env.GOOGLE_TOKEN_ENCRYPTION_KEY = randomBytes(32).toString('base64url')
   await googleIntegrationsRepository.saveIntegration(practitionerId, {
     connected: true,
     googleUserEmail: 'route@example.com',
@@ -68,6 +76,7 @@ test('Google calendar selection route preserves connected checks and response sh
     error: 'Google Calendar is not connected',
   })
 
+  process.env.GOOGLE_TOKEN_ENCRYPTION_KEY = randomBytes(32).toString('base64url')
   await googleIntegrationsRepository.saveIntegration(practitionerId, {
     connected: true,
     accessToken: 'fake-access-token',
@@ -93,6 +102,7 @@ test('Google calendar selection route preserves connected checks and response sh
 })
 
 test('Google disconnect route clears scoped integration', async () => {
+  process.env.GOOGLE_TOKEN_ENCRYPTION_KEY = randomBytes(32).toString('base64url')
   await googleIntegrationsRepository.saveIntegration(practitionerId, {
     connected: true,
     accessToken: 'fake-access-token',

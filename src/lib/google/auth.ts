@@ -104,7 +104,7 @@ export async function fetchGoogleUserEmail(accessToken: string) {
 export async function ensureFreshGoogleAccessToken(
   practitionerId: string,
 ): Promise<GoogleIntegrationRecord> {
-  const record = googleIntegrationsRepository.getIntegration(practitionerId)
+  const record = await googleIntegrationsRepository.getUsableIntegration(practitionerId)
 
   if (!record.connected || !record.accessToken) {
     throw new Error('Google Calendar is not connected for this practitioner.')
@@ -145,6 +145,7 @@ export async function ensureFreshGoogleAccessToken(
   const updated: GoogleIntegrationRecord = {
     ...record,
     accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? record.refreshToken,
     tokenExpiry: Date.now() + (data.expires_in ?? 3600) * 1000,
     lastError: null,
   }

@@ -4,6 +4,10 @@ import { drizzleDb } from '@/db/client'
 import { googleIntegrations, oauthStates } from '@/db/schema'
 import { demoPractitionerIds } from '@/db/seeds/ids'
 import {
+  decryptGoogleToken,
+  encryptGoogleToken,
+} from '@/lib/google/googleTokenEncryption'
+import {
   consumeGoogleOAuthState,
   createGoogleOAuthState,
   disconnectGoogleIntegration,
@@ -13,6 +17,7 @@ import {
 import type { GoogleIntegrationRecord } from '@/lib/google/types'
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000
+const TOKEN_EXPIRY_SKEW_MS = 30_000
 
 export type GoogleIntegrationStatus = {
   connected: boolean
@@ -48,7 +53,8 @@ function toPublicPractitionerId(practitionerId: string) {
 async function runWithFallback<T>(query: () => Promise<T>, fallback: () => T) {
   try {
     return await query()
-  } catch {
+  } catch (error) {
+    if (isTokenSecurityError(error)) throw error
     return fallback()
   }
 }
@@ -61,14 +67,79 @@ function hasUsableRuntimeTokens(integration: GoogleIntegrationRecord) {
   return Boolean(integration.connected && integration.accessToken)
 }
 
+function isTokenSecurityError(error: unknown) {
+  return (
+    error instanceof Error &&
+    (
+      error.message.includes('GOOGLE_TOKEN_ENCRYPTION_KEY') ||
+      error.message.includes('Google token ciphertext payload')
+    )
+  )
+}
+
+function dateFromTokenExpiry(tokenExpiry?: number | null) {
+  return typeof tokenExpiry === 'number' ? new Date(tokenExpiry) : null
+}
+
+function tokenExpiryFromDate(tokenExpiry?: Date | null) {
+  return tokenExpiry ? tokenExpiry.getTime() : undefined
+}
+
+function encryptedTokensLookUsable(row: GoogleIntegrationRow) {
+  if (!row.connected || !row.accessTokenEncrypted) return false
+
+  try {
+    decryptGoogleToken(row.accessTokenEncrypted)
+    const expiresSoon =
+      row.tokenExpiry && row.tokenExpiry.getTime() <= Date.now() + TOKEN_EXPIRY_SKEW_MS
+    if (expiresSoon) {
+      if (!row.refreshTokenEncrypted) return false
+      decryptGoogleToken(row.refreshTokenEncrypted)
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+function toRuntimeIntegrationFromDb(row: GoogleIntegrationRow): GoogleIntegrationRecord {
+  if (!row.connected || !row.accessTokenEncrypted) {
+    return {
+      practitionerId: toPublicPractitionerId(row.practitionerId),
+      connected: false,
+      googleUserEmail: row.googleUserEmail ?? undefined,
+      selectedCalendarId: row.selectedCalendarId ?? undefined,
+      selectedCalendarName: row.selectedCalendarName ?? undefined,
+      lastError: row.lastError ?? null,
+      connectedAt: row.connectedAt?.toISOString(),
+    }
+  }
+
+  return {
+    practitionerId: toPublicPractitionerId(row.practitionerId),
+    connected: true,
+    googleUserEmail: row.googleUserEmail ?? undefined,
+    accessToken: decryptGoogleToken(row.accessTokenEncrypted),
+    refreshToken: row.refreshTokenEncrypted
+      ? decryptGoogleToken(row.refreshTokenEncrypted)
+      : undefined,
+    tokenExpiry: tokenExpiryFromDate(row.tokenExpiry),
+    selectedCalendarId: row.selectedCalendarId ?? undefined,
+    selectedCalendarName: row.selectedCalendarName ?? undefined,
+    lastError: row.lastError ?? null,
+    connectedAt: row.connectedAt?.toISOString(),
+  }
+}
+
 function statusFromRuntimeAndMetadata(
   runtimeIntegration: GoogleIntegrationRecord,
   metadata?: GoogleIntegrationRow | null,
 ): GoogleIntegrationStatus {
   const runtimeUsable = hasUsableRuntimeTokens(runtimeIntegration)
+  const dbUsable = metadata ? encryptedTokensLookUsable(metadata) : false
 
   return {
-    connected: runtimeUsable,
+    connected: runtimeUsable || dbUsable,
     googleUserEmail: runtimeIntegration.googleUserEmail ?? metadata?.googleUserEmail ?? undefined,
     selectedCalendarId: runtimeIntegration.selectedCalendarId ?? metadata?.selectedCalendarId ?? undefined,
     selectedCalendarName: runtimeIntegration.selectedCalendarName ?? metadata?.selectedCalendarName ?? undefined,
@@ -93,6 +164,31 @@ export async function getStatus(practitionerId: string): Promise<GoogleIntegrati
   )
 }
 
+export async function getUsableIntegration(practitionerId: string) {
+  const runtimeIntegration = getIntegration(practitionerId)
+  if (hasUsableRuntimeTokens(runtimeIntegration)) return runtimeIntegration
+
+  return runWithFallback(
+    async () => {
+      const rows = await drizzleDb
+        .select()
+        .from(googleIntegrations)
+        .where(eq(googleIntegrations.practitionerId, toDatabasePractitionerId(practitionerId)))
+        .limit(1)
+
+      const row = rows[0]
+      if (!row) return runtimeIntegration
+
+      const dbIntegration = toRuntimeIntegrationFromDb(row)
+      if (dbIntegration.connected && dbIntegration.accessToken) {
+        saveGoogleIntegration(dbIntegration)
+      }
+      return dbIntegration
+    },
+    () => runtimeIntegration,
+  )
+}
+
 export async function saveIntegration(
   practitionerId: string,
   input: Omit<GoogleIntegrationRecord, 'practitionerId'> & {
@@ -108,15 +204,29 @@ export async function saveIntegration(
     async () => {
       const now = new Date()
       const databasePractitionerId = toDatabasePractitionerId(practitionerId)
+      const existingRows = await drizzleDb
+        .select()
+        .from(googleIntegrations)
+        .where(eq(googleIntegrations.practitionerId, databasePractitionerId))
+        .limit(1)
+      const existing = existingRows[0]
+      const accessTokenEncrypted = input.connected && input.accessToken
+        ? encryptGoogleToken(input.accessToken)
+        : null
+      const refreshTokenEncrypted = input.connected
+        ? input.refreshToken
+          ? encryptGoogleToken(input.refreshToken)
+          : existing?.refreshTokenEncrypted ?? null
+        : null
       const metadata = {
         practitionerId: databasePractitionerId,
         connected: Boolean(input.connected),
         googleUserEmail: input.googleUserEmail ?? null,
         selectedCalendarId: input.selectedCalendarId ?? null,
         selectedCalendarName: input.selectedCalendarName ?? null,
-        accessTokenEncrypted: null,
-        refreshTokenEncrypted: null,
-        tokenExpiry: null,
+        accessTokenEncrypted,
+        refreshTokenEncrypted,
+        tokenExpiry: input.connected ? dateFromTokenExpiry(input.tokenExpiry) : null,
         lastError: input.lastError ?? null,
         connectedAt: input.connected
           ? input.connectedAt
@@ -136,9 +246,9 @@ export async function saveIntegration(
             googleUserEmail: metadata.googleUserEmail,
             selectedCalendarId: metadata.selectedCalendarId,
             selectedCalendarName: metadata.selectedCalendarName,
-            accessTokenEncrypted: null,
-            refreshTokenEncrypted: null,
-            tokenExpiry: null,
+            accessTokenEncrypted: metadata.accessTokenEncrypted,
+            refreshTokenEncrypted: metadata.refreshTokenEncrypted,
+            tokenExpiry: metadata.tokenExpiry,
             lastError: metadata.lastError,
             connectedAt: metadata.connectedAt,
             updatedAt: metadata.updatedAt,
@@ -155,7 +265,7 @@ export async function saveSelectedCalendar(
   practitionerId: string,
   input: { calendarId: string; calendarName?: string },
 ) {
-  const integration = getIntegration(practitionerId)
+  const integration = await getUsableIntegration(practitionerId)
   return saveIntegration(practitionerId, {
     ...integration,
     connected: true,

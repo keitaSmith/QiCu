@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const calendars = await listGoogleCalendars(practitionerId, req)
-    const integration = googleIntegrationsRepository.getIntegration(practitionerId)
+    const integration = await googleIntegrationsRepository.getUsableIntegration(practitionerId)
 
     if (!integration.selectedCalendarId && calendars[0]) {
       await googleIntegrationsRepository.saveIntegration(practitionerId, {

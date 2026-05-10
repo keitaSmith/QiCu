@@ -25,17 +25,18 @@ function ninetyDaysFromTodayIso() {
 
 export async function GET(req: NextRequest) {
   const practitionerId = await getPractitionerIdFromRequest(req)
-  const integration = googleIntegrationsRepository.getIntegration(practitionerId)
-
-  if (!integration.connected || !integration.selectedCalendarId) {
-    return NextResponse.json({ error: 'Connect Google Calendar and choose a calendar first.' }, { status: 400 })
-  }
 
   const from = req.nextUrl.searchParams.get('from')?.trim() || startOfTodayIso()
   const to = req.nextUrl.searchParams.get('to')?.trim() || ninetyDaysFromTodayIso()
   const importMode = (req.nextUrl.searchParams.get('mode')?.trim() as GoogleImportMode | null) || 'appointments-only'
 
   try {
+    const integration = await googleIntegrationsRepository.getUsableIntegration(practitionerId)
+
+    if (!integration.connected || !integration.selectedCalendarId) {
+      return NextResponse.json({ error: 'Connect Google Calendar and choose a calendar first.' }, { status: 400 })
+    }
+
     const events = await listGoogleCalendarEvents(
       practitionerId,
       req,

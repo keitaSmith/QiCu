@@ -17,7 +17,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'calendarId is required' }, { status: 400 })
   }
 
-  const integration = googleIntegrationsRepository.getIntegration(practitionerId)
+  let integration
+  try {
+    integration = await googleIntegrationsRepository.getUsableIntegration(practitionerId)
+  } catch {
+    return NextResponse.json({ error: 'Google Calendar is not connected' }, { status: 400 })
+  }
   if (!integration.connected) {
     return NextResponse.json({ error: 'Google Calendar is not connected' }, { status: 400 })
   }

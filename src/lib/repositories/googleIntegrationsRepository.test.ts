@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import { afterEach, test } from 'node:test'
 
 import { eq } from 'drizzle-orm'
@@ -14,6 +15,7 @@ import {
   getIntegration,
   getSelectedCalendar,
   getStatus,
+  getUsableIntegration,
   saveIntegration,
   saveSelectedCalendar,
 } from './googleIntegrationsRepository'
@@ -22,6 +24,11 @@ const practitionerId = 'prac-repo-google'
 const otherPractitionerId = 'prac-repo-google-other'
 const seededPractitionerId = 'prac-tom-cook'
 const seededOtherPractitionerId = 'prac-keita-smith'
+const originalEncryptionKey = process.env.GOOGLE_TOKEN_ENCRYPTION_KEY
+
+function setGoogleTokenEncryptionTestKey() {
+  process.env.GOOGLE_TOKEN_ENCRYPTION_KEY = randomBytes(32).toString('base64url')
+}
 
 async function loadGoogleIntegrationMetadata(practitionerId: string) {
   const databasePractitionerId =
@@ -46,6 +53,11 @@ afterEach(async () => {
   await disconnect(otherPractitionerId)
   await disconnect(seededPractitionerId)
   await disconnect(seededOtherPractitionerId)
+  if (originalEncryptionKey === undefined) {
+    delete process.env.GOOGLE_TOKEN_ENCRYPTION_KEY
+  } else {
+    process.env.GOOGLE_TOKEN_ENCRYPTION_KEY = originalEncryptionKey
+  }
 })
 
 test('getStatus returns disconnected public state when no integration exists', async () => {
@@ -61,6 +73,7 @@ test('getStatus returns disconnected public state when no integration exists', a
 })
 
 test('saveIntegration stores state scoped by practitioner and status hides tokens', async () => {
+  setGoogleTokenEncryptionTestKey()
   await saveIntegration(practitionerId, {
     connected: true,
     googleUserEmail: 'repo@example.com',
@@ -85,6 +98,7 @@ test('saveIntegration stores state scoped by practitioner and status hides token
 })
 
 test('saveSelectedCalendar stores calendar selection scoped by practitioner', async () => {
+  setGoogleTokenEncryptionTestKey()
   await saveIntegration(practitionerId, {
     connected: true,
     accessToken: 'fake-access-token',
@@ -105,6 +119,7 @@ test('saveSelectedCalendar stores calendar selection scoped by practitioner', as
 })
 
 test('disconnect clears only the scoped integration', async () => {
+  setGoogleTokenEncryptionTestKey()
   await saveIntegration(practitionerId, { connected: true, accessToken: 'fake-access-token' })
   await saveIntegration(otherPractitionerId, { connected: true, accessToken: 'other-fake-token' })
 
@@ -114,12 +129,13 @@ test('disconnect clears only the scoped integration', async () => {
   assert.equal((await getStatus(otherPractitionerId)).connected, true)
 })
 
-test('saveIntegration persists non-secret metadata but never token columns', async t => {
+test('saveIntegration persists encrypted tokens without plaintext leakage', async t => {
+  setGoogleTokenEncryptionTestKey()
   await saveIntegration(seededPractitionerId, {
     connected: true,
     googleUserEmail: 'seeded-google@example.com',
-    accessToken: 'fake-access-token',
-    refreshToken: 'fake-refresh-token',
+    accessToken: 'test-access-token',
+    refreshToken: 'test-refresh-token',
     tokenExpiry: Date.now() + 3600_000,
     selectedCalendarId: 'calendar-seeded',
     selectedCalendarName: 'Seeded Calendar',
@@ -137,12 +153,22 @@ test('saveIntegration persists non-secret metadata but never token columns', asy
   assert.equal(metadata?.googleUserEmail, 'seeded-google@example.com')
   assert.equal(metadata?.selectedCalendarId, 'calendar-seeded')
   assert.equal(metadata?.selectedCalendarName, 'Seeded Calendar')
-  assert.equal(metadata?.accessTokenEncrypted, null)
-  assert.equal(metadata?.refreshTokenEncrypted, null)
-  assert.equal(metadata?.tokenExpiry, null)
+  assert.equal(metadata?.accessTokenEncrypted?.includes('test-access-token'), false)
+  assert.equal(metadata?.refreshTokenEncrypted?.includes('test-refresh-token'), false)
+  assert.notEqual(metadata?.accessTokenEncrypted, null)
+  assert.notEqual(metadata?.refreshTokenEncrypted, null)
+  assert.notEqual(metadata?.tokenExpiry, null)
+
+  disconnectGoogleIntegration(seededPractitionerId)
+  const usable = await getUsableIntegration(seededPractitionerId)
+
+  assert.equal(usable.connected, true)
+  assert.equal(usable.accessToken, 'test-access-token')
+  assert.equal(usable.refreshToken, 'test-refresh-token')
 })
 
 test('selected calendar metadata persists for the scoped practitioner only', async t => {
+  setGoogleTokenEncryptionTestKey()
   await saveIntegration(seededPractitionerId, {
     connected: true,
     accessToken: 'fake-access-token',
@@ -171,6 +197,7 @@ test('selected calendar metadata persists for the scoped practitioner only', asy
 })
 
 test('disconnect clears persisted metadata and runtime token state', async t => {
+  setGoogleTokenEncryptionTestKey()
   await saveIntegration(seededPractitionerId, {
     connected: true,
     googleUserEmail: 'disconnect@example.com',
@@ -200,10 +227,10 @@ test('disconnect clears persisted metadata and runtime token state', async t => 
 })
 
 test('status does not claim a usable connection from DB metadata alone', async t => {
+  setGoogleTokenEncryptionTestKey()
   await saveIntegration(seededPractitionerId, {
     connected: true,
     googleUserEmail: 'metadata-only@example.com',
-    accessToken: 'fake-access-token',
     selectedCalendarId: 'calendar-metadata',
     selectedCalendarName: 'Metadata Calendar',
   })
@@ -223,11 +250,84 @@ test('status does not claim a usable connection from DB metadata alone', async t
   assert.equal(status.selectedCalendarId, 'calendar-metadata')
 })
 
+test('status reports connected from encrypted DB tokens when decryptable', async t => {
+  setGoogleTokenEncryptionTestKey()
+  await saveIntegration(seededPractitionerId, {
+    connected: true,
+    googleUserEmail: 'restart@example.com',
+    accessToken: 'restart-access-token',
+    refreshToken: 'restart-refresh-token',
+    tokenExpiry: Date.now() + 3600_000,
+    selectedCalendarId: 'calendar-restart',
+    selectedCalendarName: 'Restart Calendar',
+  })
+
+  const { available } = await loadGoogleIntegrationMetadata(seededPractitionerId)
+  if (!available) {
+    t.skip('PostgreSQL metadata table is not available for this test run.')
+    return
+  }
+
+  disconnectGoogleIntegration(seededPractitionerId)
+
+  const status = await getStatus(seededPractitionerId)
+
+  assert.equal(status.connected, true)
+  assert.equal(status.googleUserEmail, 'restart@example.com')
+  assert.equal(status.selectedCalendarId, 'calendar-restart')
+})
+
+test('missing encryption key fails closed for DB token persistence', async t => {
+  const { available } = await loadGoogleIntegrationMetadata(seededPractitionerId)
+  if (!available) {
+    t.skip('PostgreSQL metadata table is not available for this test run.')
+    return
+  }
+
+  delete process.env.GOOGLE_TOKEN_ENCRYPTION_KEY
+
+  await assert.rejects(
+    saveIntegration(seededPractitionerId, {
+      connected: true,
+      accessToken: 'token-without-key',
+    }),
+    /GOOGLE_TOKEN_ENCRYPTION_KEY is required/,
+  )
+})
+
+test('refresh token is preserved when a later save only has a new access token', async t => {
+  setGoogleTokenEncryptionTestKey()
+  await saveIntegration(seededPractitionerId, {
+    connected: true,
+    accessToken: 'original-access-token',
+    refreshToken: 'original-refresh-token',
+    tokenExpiry: Date.now() + 3600_000,
+  })
+
+  const { available } = await loadGoogleIntegrationMetadata(seededPractitionerId)
+  if (!available) {
+    t.skip('PostgreSQL metadata table is not available for this test run.')
+    return
+  }
+
+  await saveIntegration(seededPractitionerId, {
+    connected: true,
+    accessToken: 'refreshed-access-token',
+    tokenExpiry: Date.now() + 7200_000,
+  })
+
+  disconnectGoogleIntegration(seededPractitionerId)
+  const usable = await getUsableIntegration(seededPractitionerId)
+
+  assert.equal(usable.accessToken, 'refreshed-access-token')
+  assert.equal(usable.refreshToken, 'original-refresh-token')
+})
+
 test('OAuth state creation and consume behavior remains one-time', async () => {
-  const state = await createOAuthState(practitionerId)
+  const state = await createOAuthState(seededPractitionerId)
   const consumed = await consumeOAuthState(state)
 
-  assert.equal(consumed?.practitionerId, practitionerId)
+  assert.equal(consumed?.practitionerId, seededPractitionerId)
   assert.equal(typeof consumed?.createdAt, 'number')
   assert.equal(await consumeOAuthState(state), undefined)
   assert.equal(await consumeOAuthState('missing-state'), undefined)

@@ -79,6 +79,8 @@ Do not store raw Google tokens in PostgreSQL.
 
 Phase G.1 added `src/lib/google/googleTokenEncryption.ts` as a preflight utility only. It is not wired into OAuth routes, Google repositories, sync helpers, or database persistence yet.
 
+Phase G.4 wires that utility into Google integration persistence. Access and refresh tokens are now stored in `google_integrations` only as encrypted AES-256-GCM payloads when PostgreSQL is available. Plaintext tokens remain limited to internal server-side runtime objects needed for Google API calls and are never returned by public status/API responses.
+
 Recommended Phase G token strategy:
 
 - Use environment-based authenticated encryption, for example AES-256-GCM through Node `crypto`.
@@ -95,7 +97,7 @@ Recommended Phase G token strategy:
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
 
-The key is not required during normal app boot in Phase G.1 because runtime Google token persistence is not enabled yet. It should become mandatory only for code paths that encrypt/decrypt persisted Google tokens in a later phase. Once token persistence is enabled, losing or rotating this key without a migration plan will make existing encrypted tokens undecryptable.
+The key is not required during normal app boot. It is mandatory for code paths that encrypt or decrypt persisted Google tokens. Once token persistence is enabled, losing or rotating this key without a migration plan will make existing encrypted tokens undecryptable.
 
 Missing key behavior:
 
@@ -108,6 +110,8 @@ Refresh behavior:
 - Persist the new encrypted access token and expiry after refresh.
 - Preserve refresh token if Google does not return a new refresh token.
 - If refresh fails, keep local booking operations safe, record a non-sensitive `lastError`, and require reconnect when appropriate.
+
+Phase G.4 refresh behavior preserves the existing local-workflow fallback: booking create/update/delete sync catches Google/token errors and records sync error state without breaking the local booking mutation. Successful refresh saves the new encrypted access token and expiry, and preserves the existing encrypted refresh token when Google does not return a replacement.
 
 Disconnect behavior:
 
@@ -153,7 +157,7 @@ Selected calendar behavior should:
 
 Disconnect now clears the in-memory token-bearing integration and marks the DB metadata row disconnected when PostgreSQL is available. It also clears selected calendar metadata, token encrypted columns, token expiry, last error, and connected timestamp defensively. The route response remains `{ ok: true }`.
 
-Public status still preserves current usable-token semantics. It may read persisted non-secret email/calendar metadata, but it only reports `connected: true` while the current runtime process still has a usable token-bearing integration record. This avoids a misleading "connected after restart" state before encrypted token persistence is implemented in Phase G.4.
+Public status preserves usable-token semantics. It may report `connected: true` after restart only when the DB row is connected, encrypted token payloads are present as needed, `GOOGLE_TOKEN_ENCRYPTION_KEY` is valid, and the required tokens can be decrypted. Metadata-only or undecryptable rows do not produce a misleading connected state.
 
 ## Booking Sync Behavior Audit
 
@@ -198,7 +202,7 @@ Behavior to preserve:
 1. Phase G.1: Add a token encryption utility and guarded configuration checks. Confirm no schema changes are required unless PKCE code verifier storage is added. Complete: encryption utility and tests exist, no runtime token persistence was added.
 2. Phase G.2: Move OAuth state create/consume to DB-backed repository methods with expiry and one-time consumption. Complete: OAuth state rows now use `oauth_states` when PostgreSQL is available; route behavior is unchanged.
 3. Phase G.3: Move public integration status, selected calendar, connected account metadata, and disconnect to DB-backed repository methods without persisting plaintext tokens. Complete: non-secret metadata is persisted where safe, while usable-token connection state remains runtime-only until encrypted token persistence lands.
-4. Phase G.4: Implement encrypted token persistence and token refresh update behavior.
+4. Phase G.4: Implement encrypted token persistence and token refresh update behavior. Complete: access/refresh tokens are persisted only as encrypted payloads, status can use decryptable DB tokens after restart, and refresh updates encrypted access token/expiry while preserving refresh tokens when Google omits a replacement. DB-backed targeted Google/G.4 tests passed against local PostgreSQL with 36/36 tests and 0 skipped; `db:migrate`, `db:check`, and `db:seed` also passed.
 5. Phase G.5: Verify booking create/update/delete sync, calendar list, events preview, and reconcile against DB-backed integration state.
 6. Phase G completion audit.
 

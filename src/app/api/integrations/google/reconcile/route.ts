@@ -7,7 +7,12 @@ import * as googleIntegrationsRepository from '@/lib/repositories/googleIntegrat
 
 export async function POST(req: NextRequest) {
   const practitionerId = await getPractitionerIdFromRequest(req)
-  const integration = googleIntegrationsRepository.getIntegration(practitionerId)
+  let integration
+  try {
+    integration = await googleIntegrationsRepository.getUsableIntegration(practitionerId)
+  } catch {
+    return NextResponse.json({ error: 'Connect Google Calendar and choose a calendar first.' }, { status: 400 })
+  }
 
   if (!integration.connected || !integration.selectedCalendarId) {
     return NextResponse.json({ error: 'Connect Google Calendar and choose a calendar first.' }, { status: 400 })

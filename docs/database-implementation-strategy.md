@@ -569,3 +569,13 @@ Selected calendar saves are now mirrored to `google_integrations` for the scoped
 No real access tokens, refresh tokens, ID tokens, authorization codes, encrypted tokens, token refresh responses, or authorization headers are persisted in Phase G.3. Public status shape is unchanged and does not expose tokens. To avoid a misleading connected-after-restart state before encrypted token persistence exists, status only reports `connected: true` when the current runtime still has a usable in-memory token-bearing integration; full restart-persistent usable Google connection remains Phase G.4.
 
 OAuth state remains DB-backed from Phase G.2. OAuth routes, Google sync behavior, calendar list behavior, import/reconcile response shapes, dashboard UI, and booking workflows remain unchanged. No schema migration, PKCE, scheduler, cron job, or cleanup UI was added.
+
+## Implementation note: Phase G.4 encrypted Google token persistence
+
+Phase G.4 wired the existing Google token encryption utility into `googleIntegrationsRepository`. When PostgreSQL is available, Google access and refresh tokens are persisted only as encrypted AES-256-GCM payloads in `google_integrations.access_token_encrypted` and `google_integrations.refresh_token_encrypted`; plaintext tokens are not written to database columns, public status/API responses, logs, or docs.
+
+`GOOGLE_TOKEN_ENCRYPTION_KEY` is now mandatory for token persistence/decryption paths, but normal app boot still does not require it unless a Google token path is used. Public status shape remains unchanged and can report `connected: true` after restart only when the DB row is connected, encrypted token payloads are present as needed, the encryption key is valid, and tokens can be decrypted. Metadata-only or undecryptable rows are treated as not connected to avoid a misleading usable connection state.
+
+Internal Google helper paths can now load/decrypt DB-backed tokens through repository internals. Successful refresh persists the newly encrypted access token and updated expiry while preserving the existing encrypted refresh token if Google does not return a replacement. Disconnect clears runtime token state plus encrypted token columns, token expiry, selected calendar metadata, last error, and connected timestamp.
+
+OAuth state remains DB-backed from Phase G.2, and non-secret metadata/selected calendar state remains DB-backed from Phase G.3. Google sync fallback behavior, calendar list behavior, import preview, reconcile response shapes, dashboard UI, booking workflows, public IDs, and API response shapes remain unchanged. No schema migration, PKCE, scheduler, cron job, background sync, or token refresh UI was added.
