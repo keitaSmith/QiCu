@@ -588,12 +588,12 @@ Production recommendations:
 - Set a strong `GOOGLE_TOKEN_ENCRYPTION_KEY` before using Google token persistence paths.
 - Use a strong database password or managed PostgreSQL with backups and restricted network access.
 - Add broader CSRF hardening before real sensitive deployment. SameSite and login/logout origin checks help, but cookie-authenticated mutating domain routes should eventually use a consistent CSRF/origin strategy.
-- Add real login UX, signup/invite, password reset, and email verification flows before onboarding real users.
+- Polish login UX and add signup/invite, password reset, and email verification flows before onboarding real users.
 - Consider middleware/page redirects after the product decides how unauthenticated dashboard visits should behave.
 
 Out of scope and remaining future work:
 
-- Login page/redirect UX.
+- Polished login page and redirect UX.
 - Signup, practitioner invite, password reset, and email verification.
 - CSRF protection beyond the current login/logout origin guard.
 - Middleware/page-level dashboard redirects.
@@ -601,3 +601,16 @@ Out of scope and remaining future work:
 - Organization/multi-practitioner account model expansion.
 
 No business success response shapes changed in Phase H. Public IDs remain stable, DB UUIDs remain internal, and existing booking/session/patient/service/lifecycle/Trash/Google domain behavior remains unchanged apart from intentional strict-mode auth errors.
+
+## Login UX / Strict Browser Flow Note
+
+The first browser login flow is now in place so strict mode can be used from the dashboard.
+
+- `/login` renders a minimal email/password form and submits to `POST /api/auth/login`.
+- Successful login relies on the server-set `qicu_session` HttpOnly cookie and redirects to `/dashboard` or a safe `next` path.
+- Failed login shows the same generic invalid-credentials message used by the API and does not reveal whether the email or password was wrong.
+- The dashboard layout checks `/api/auth/me`; when the auth response indicates strict enforcement and no session is present, it redirects to `/login` instead of leaving the UI in a broken `401` state.
+- The profile menu includes a minimal sign-out action that posts to `POST /api/auth/logout`, clears the server session cookie, and returns the browser to `/login`.
+- Demo mode remains available when strict mode is not enabled. In demo mode, the existing practitioner switcher and `x-qicu-practitioner-id` header behavior remain available for local development/tests.
+
+No signup, invite flow, password reset, email verification, middleware enforcement, schema change, or business/domain response shape change was added. Remaining auth UX work includes a polished login experience, account recovery flows, invite/onboarding, broader CSRF hardening, and production-only demo fallback removal.

@@ -291,6 +291,13 @@ Phase H.6 completion audit note:
 - Production should set `QICU_AUTH_ENFORCEMENT=strict`, use HTTPS, avoid demo fallback, set `GOOGLE_TOKEN_ENCRYPTION_KEY` before Google token paths are used, and plan additional CSRF hardening before real sensitive deployment.
 - Remaining auth work is product/UX hardening: login page/redirects, signup/invite, password reset, email verification, broader CSRF strategy, optional middleware redirects, and production-only demo fallback removal.
 
+Strict browser login flow note:
+
+- `/login` now provides a minimal email/password form backed by `POST /api/auth/login`; successful login uses the server-set HttpOnly `qicu_session` cookie and redirects to the dashboard.
+- The dashboard layout reads `/api/auth/me` and redirects unauthenticated strict-mode visitors to `/login`, while preserving demo/header fallback behavior when strict auth is not enabled.
+- The dashboard profile menu includes a minimal logout action backed by `POST /api/auth/logout`.
+- Signup, invite flow, password reset, email verification, broad middleware redirects, schema changes, and business/domain response shape changes remain out of scope.
+
 ## Repository naming and responsibilities
 
 | Repository | Responsibility | Example methods | Current store/API equivalent |

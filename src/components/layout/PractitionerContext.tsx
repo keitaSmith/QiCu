@@ -18,6 +18,7 @@ type PractitionerContextValue = {
   isAuthenticated: boolean
   isDemoMode: boolean
   authLoading: boolean
+  authRequired: boolean
 }
 
 const PractitionerContext = createContext<PractitionerContextValue | null>(null)
@@ -26,6 +27,7 @@ export function PractitionerProvider({ children }: { children: ReactNode }) {
   const [practitionerId, setPractitionerIdState] = useState(DEFAULT_PRACTITIONER_ID)
   const [sessionPractitioner, setSessionPractitioner] = useState<Practitioner | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [authRequired, setAuthRequired] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -37,6 +39,7 @@ export function PractitionerProvider({ children }: { children: ReactNode }) {
           cache: 'no-store',
           credentials: 'include',
         })
+        const requiresAuth = response.headers.get('x-qicu-auth-enforcement') === 'strict'
         const data = await response.json().catch(() => null)
         const practitioner = data?.authenticated && data?.practitioner?.id
           ? {
@@ -54,6 +57,7 @@ export function PractitionerProvider({ children }: { children: ReactNode }) {
           : null
 
         if (cancelled) return
+        setAuthRequired(requiresAuth)
 
         if (practitioner) {
           hasSessionPractitioner = true
@@ -75,7 +79,10 @@ export function PractitionerProvider({ children }: { children: ReactNode }) {
     }
 
     loadAuthState().catch(() => {
-      if (!cancelled) setAuthLoading(false)
+      if (!cancelled) {
+        setAuthRequired(false)
+        setAuthLoading(false)
+      }
     })
 
     return () => {
@@ -111,8 +118,9 @@ export function PractitionerProvider({ children }: { children: ReactNode }) {
       isAuthenticated: Boolean(sessionPractitioner),
       isDemoMode: !sessionPractitioner,
       authLoading,
+      authRequired,
     }),
-    [authLoading, practitionerId, currentPractitioner, sessionPractitioner, setPractitionerId, source],
+    [authLoading, authRequired, practitionerId, currentPractitioner, sessionPractitioner, setPractitionerId, source],
   )
 
   return <PractitionerContext.Provider value={value}>{children}</PractitionerContext.Provider>

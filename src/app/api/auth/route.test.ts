@@ -269,6 +269,7 @@ test('/api/auth/me returns safe public auth state', async t => {
   const body = await response.json()
 
   assert.equal(response.status, 200)
+  assert.equal(response.headers.get('x-qicu-auth-enforcement'), 'legacy')
   assert.equal(body.authenticated, true)
   assert.equal(body.user.email, setup.user.email)
   assert.equal(body.user.id, undefined)
@@ -277,5 +278,6 @@ test('/api/auth/me returns safe public auth state', async t => {
   assert.equal(JSON.stringify(body).includes(token ?? ''), false)
 
   const anonymous = await ME(new NextRequest('http://localhost:3000/api/auth/me'))
+  assert.equal(anonymous.headers.get('x-qicu-auth-enforcement'), 'legacy')
   assert.deepEqual(await anonymous.json(), { authenticated: false })
 })

@@ -2,9 +2,9 @@
 'use client'
 
 import { SnackbarProvider } from '@/components/ui/Snackbar'
-import { useMemo, useState, ReactNode } from 'react'
+import { useEffect, useMemo, useState, ReactNode } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   Dialog,
   DialogBackdrop,
@@ -74,10 +74,44 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 }
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
+  const { authLoading, authRequired, isAuthenticated } = usePractitioner()
+  const pathname = usePathname()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!authLoading && authRequired && !isAuthenticated) {
+      router.replace(`/login?next=${encodeURIComponent(pathname || '/dashboard')}`)
+    }
+  }, [authLoading, authRequired, isAuthenticated, pathname, router])
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-canvas text-sm font-medium text-ink/70">
+        Loading QiCu...
+      </div>
+    )
+  }
+
+  if (authRequired && !isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-canvas px-4 text-center">
+        <div>
+          <h1 className="text-xl font-semibold text-ink">Sign in required</h1>
+          <p className="mt-2 text-sm text-ink/60">Redirecting you to the QiCu login page.</p>
+        </div>
+      </div>
+    )
+  }
+
+  return <DashboardContent>{children}</DashboardContent>
+}
+
+function DashboardContent({ children }: { children: React.ReactNode }) {
   const { currentPractitioner, practitioners, setPractitionerId, isDemoMode } = usePractitioner()
   const { patients } = usePatients()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pathname = usePathname()
+  const router = useRouter()
   const showRightPanel = [
   '/dashboard/patients',
   '/dashboard/sessions',
@@ -96,6 +130,16 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     setTaskBooking(b)
     setTaskSessionOpen(true)
   }
+
+  async function handleLogout() {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => null)
+    router.replace('/login')
+    router.refresh()
+  }
+
   return (
     <SnackbarProvider>
     <div>
@@ -348,6 +392,16 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                         <span className="rounded-full bg-brand-300/20 px-2 py-1 text-[11px] font-semibold text-brand-700">Active</span>
                       </div>
                     )}
+                    <div className="my-2 border-t border-brand-300/30" />
+                    <MenuItem>
+                      <button
+                        type="button"
+                        onClick={isDemoMode ? () => router.push('/login') : handleLogout}
+                        className="flex w-full items-center px-3 py-2 text-left text-sm font-semibold text-ink data-focus:bg-brand-300/10 data-focus:outline-hidden"
+                      >
+                        {isDemoMode ? 'Sign in' : 'Sign out'}
+                      </button>
+                    </MenuItem>
                   </MenuItems>
                 </Menu>
               </div>
