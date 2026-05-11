@@ -298,6 +298,12 @@ Strict browser login flow note:
 - The dashboard profile menu includes a minimal logout action backed by `POST /api/auth/logout`.
 - Signup, invite flow, password reset, email verification, broad middleware redirects, schema changes, and business/domain response shape changes remain out of scope.
 
+Local development auth fixture note:
+
+- `npm run db:seed:auth-dev` seeds a local-only password user for manual strict-mode browser testing.
+- The fixture refuses to run in production, hashes the password with the existing auth helper, and links `dev@qicu.local` to the existing seeded practitioner `prac-keita-smith`.
+- The local-only password is documented in the H readiness doc for development testing only. Production user creation still needs a real signup, invite, or admin provisioning flow.
+
 ## Repository naming and responsibilities
 
 | Repository | Responsibility | Example methods | Current store/API equivalent |

@@ -614,3 +614,31 @@ The first browser login flow is now in place so strict mode can be used from the
 - Demo mode remains available when strict mode is not enabled. In demo mode, the existing practitioner switcher and `x-qicu-practitioner-id` header behavior remain available for local development/tests.
 
 No signup, invite flow, password reset, email verification, middleware enforcement, schema change, or business/domain response shape change was added. Remaining auth UX work includes a polished login experience, account recovery flows, invite/onboarding, broader CSRF hardening, and production-only demo fallback removal.
+
+## Local Development Auth Fixture
+
+A separate local-only auth seed command is available for manual strict-mode browser testing:
+
+```bash
+npm run db:seed
+npm run db:seed:auth-dev
+```
+
+The auth fixture is intentionally not part of production onboarding. It refuses to run when `NODE_ENV=production`, stores only a bcrypt password hash, and links the local test user to the existing seeded practitioner `prac-keita-smith`.
+
+Local-only login details:
+
+- Email: `dev@qicu.local`
+- Password: `ChangeMe123!`
+- Practitioner: `prac-keita-smith`
+
+Manual strict-mode smoke test:
+
+1. Start PostgreSQL and run migrations/seeds.
+2. Run `npm run db:seed:auth-dev`.
+3. Start the app with `QICU_AUTH_ENFORCEMENT=strict`.
+4. Open `/dashboard` and confirm it redirects to `/login`.
+5. Sign in with the local-only credentials above.
+6. Confirm the dashboard loads as the linked practitioner and the profile menu sign-out returns to `/login`.
+
+Future production user creation should use a real signup, invite, or admin provisioning flow. Do not use the local fixture credentials outside local development.

@@ -14,6 +14,7 @@
     "db:down": "docker compose -f docker-compose.db.yml down",
     "db:check": "tsx src/db/check.ts",
     "db:seed": "tsx src/db/seeds/seedDev.ts",
+    "db:seed:auth-dev": "tsx src/db/seeds/seedDevAuth.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
