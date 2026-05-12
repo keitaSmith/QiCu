@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
+import { mutatingOriginGuardResponse } from '@/lib/auth/originGuard'
 import { getPractitionerIdOrAuthResponse } from '@/lib/practitionerRequest'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
 import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
@@ -56,6 +57,9 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
+  const originResponse = mutatingOriginGuardResponse(req)
+  if (originResponse) return originResponse
+
   const scope = await getPractitionerIdOrAuthResponse(req)
   if (scope.response) return scope.response
   const practitionerId = scope.practitionerId
@@ -103,6 +107,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
+  const originResponse = mutatingOriginGuardResponse(req)
+  if (originResponse) return originResponse
+
   const scope = await getPractitionerIdOrAuthResponse(req)
   if (scope.response) return scope.response
   const practitionerId = scope.practitionerId

@@ -97,6 +97,8 @@ Production auth hardening note:
 - Strict-mode practitioner scope is derived from the authenticated session and does not trust `x-qicu-practitioner-id`.
 - Session-mode client fetches omit `x-qicu-practitioner-id`.
 - Demo-mode client fetches still include `x-qicu-practitioner-id` only when demo fallback is allowed in local development and tests.
+- Mutating API routes use a shared origin guard. Requests with a clearly cross-origin `Origin` header return `403`, and strict/production mode also rejects browser fetch metadata marked `cross-site` when `Origin` is absent.
+- Missing `Origin` without browser cross-site fetch metadata remains allowed for non-browser clients and local tooling.
 - Google token fields remain encrypted at rest and hidden from public responses.
 
 ## Remaining Production Work
@@ -104,7 +106,7 @@ Production auth hardening note:
 - Add real signup, invite, or admin user provisioning.
 - Expand from the operator CLI to a fuller invite/admin provisioning workflow.
 - Add password reset and email verification flows.
-- Add a broader CSRF/origin strategy for cookie-authenticated mutating domain routes.
+- Add a full CSRF-token strategy if the product needs stronger browser form protections beyond SameSite cookies and the shared origin/fetch-metadata guard.
 - Decide whether to add middleware/page-level redirects for protected dashboard pages.
 - Build a production operator runbook around explicit auth mode, user provisioning, and recovery steps.
 - Add production account management and operator runbooks.

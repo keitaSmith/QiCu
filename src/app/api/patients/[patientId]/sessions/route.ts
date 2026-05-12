@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { mutatingOriginGuardResponse } from '@/lib/auth/originGuard'
 import { getPractitionerIdOrAuthResponse } from '@/lib/practitionerRequest'
 import { canUsePatientInActiveWorkflow } from '@/lib/patientWorkflow'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
@@ -20,6 +21,9 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
+  const originResponse = mutatingOriginGuardResponse(req)
+  if (originResponse) return originResponse
+
   const scope = await getPractitionerIdOrAuthResponse(req)
   if (scope.response) return scope.response
   const practitionerId = scope.practitionerId

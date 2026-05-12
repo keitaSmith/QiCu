@@ -288,8 +288,8 @@ Phase H.6 completion audit note:
 - Password credentials store hashes only, auth sessions store opaque session token hashes only, login/logout/session cookie behavior is in place, and `/api/auth/me` returns safe public auth state.
 - Dashboard session mode uses `/api/auth/me`, sends cookies, and omits `x-qicu-practitioner-id`; demo mode remains explicit for local development/tests.
 - Strict mode now provides the authenticated production path: protected practitioner-scoped API routes resolve session-derived public practitioner scope and return clean `401`/`403` errors when auth scope is missing or invalid.
-- Production should set `QICU_AUTH_ENFORCEMENT=strict`, use HTTPS, avoid demo fallback, set `GOOGLE_TOKEN_ENCRYPTION_KEY` before Google token paths are used, and plan additional CSRF hardening before real sensitive deployment.
-- Remaining auth work is product/UX hardening: login page/redirects, signup/invite, password reset, email verification, broader CSRF strategy, optional middleware redirects, and production-only demo fallback removal.
+- Production should set `QICU_AUTH_ENFORCEMENT=strict`, use HTTPS, avoid demo fallback, set `GOOGLE_TOKEN_ENCRYPTION_KEY` before Google token paths are used, and consider CSRF-token hardening if QiCu needs stronger protection than SameSite cookies plus the shared origin/fetch-metadata guard.
+- Remaining auth work is product/UX hardening: login page/redirects, signup/invite, password reset, email verification, optional CSRF token strategy, optional middleware redirects, and production runbooks.
 
 Strict browser login flow note:
 
@@ -309,7 +309,7 @@ Post-auth strict-mode checkpoint note:
 - The strict browser flow was smoke-tested locally: `/dashboard` redirects to `/login` when logged out in strict mode, the dev fixture account logs in, dashboard domain pages load without `401`, and logout returns to `/login`.
 - Production readiness is now tracked in `docs/auth-production-readiness-checklist.md`.
 - Production must keep `QICU_AUTH_ENFORCEMENT=strict`, use HTTPS, configure production PostgreSQL, set `GOOGLE_TOKEN_ENCRYPTION_KEY` before Google token paths are used, and avoid the dev auth fixture/demo fallback.
-- Remaining production auth work includes signup/invite/admin provisioning, password reset/email verification, broader CSRF/origin handling for cookie-authenticated mutating routes, optional middleware/page redirects, and production-only demo fallback removal.
+- Remaining production auth work includes signup/invite/admin provisioning, password reset/email verification, optional CSRF token hardening, optional middleware/page redirects, and production operator runbooks.
 
 Admin auth provisioning note:
 
@@ -325,6 +325,14 @@ Production auth hardening note:
 - `QICU_AUTH_ENFORCEMENT=strict` remains the explicit production setting and should still be configured in deployed environments.
 - As a safety backstop, `NODE_ENV=production` now behaves as strict auth by default even if `QICU_AUTH_ENFORCEMENT` is missing or misconfigured.
 - Local development and test mode still preserve demo/header fallback when strict auth is not enabled.
+
+Mutating route origin guard note:
+
+- Protected `POST`, `PATCH`, and `DELETE` API handlers now use a shared origin guard.
+- Clearly cross-origin requests with a mismatched `Origin` header return `403` with a simple `{ "error": "Forbidden" }` body.
+- Strict/production mode also rejects requests without `Origin` when browser fetch metadata explicitly reports `Sec-Fetch-Site: cross-site`.
+- Missing `Origin` without cross-site browser metadata remains allowed for non-browser clients, tests, and local tooling.
+- Read-only `GET` routes and the Google OAuth callback flow remain compatible.
 
 ## Repository naming and responsibilities
 

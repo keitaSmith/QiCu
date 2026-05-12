@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+import { mutatingOriginGuardResponse } from '@/lib/auth/originGuard'
 import { getPractitionerIdOrAuthResponse } from '@/lib/practitionerRequest'
 import * as lifecycleRepository from '@/lib/repositories/lifecycleRepository'
 
@@ -8,6 +9,9 @@ type RouteParams = {
 }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
+  const originResponse = mutatingOriginGuardResponse(req)
+  if (originResponse) return originResponse
+
   const scope = await getPractitionerIdOrAuthResponse(req)
   if (scope.response) return scope.response
   const practitionerId = scope.practitionerId

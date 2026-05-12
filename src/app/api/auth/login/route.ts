@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { isSameOriginRequest } from '@/lib/auth/originGuard'
+import { mutatingOriginGuardResponse } from '@/lib/auth/originGuard'
 import { verifyPassword } from '@/lib/auth/password'
 import { setSessionCookie } from '@/lib/auth/sessionCookies'
 import { createSessionExpiryDate, generateSessionToken, hashSessionToken } from '@/lib/auth/sessionTokens'
@@ -31,9 +31,8 @@ async function parseLoginBody(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isSameOriginRequest(req)) {
-    return NextResponse.json({ error: 'Cross-origin auth request rejected.' }, { status: 403 })
-  }
+  const originResponse = mutatingOriginGuardResponse(req)
+  if (originResponse) return originResponse
 
   const parsed = await parseLoginBody(req)
   if (!parsed) {

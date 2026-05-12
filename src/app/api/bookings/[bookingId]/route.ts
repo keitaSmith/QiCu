@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { BookingStatus } from '@/models/booking'
+import { mutatingOriginGuardResponse } from '@/lib/auth/originGuard'
 import { getPractitionerIdOrAuthResponse } from '@/lib/practitionerRequest'
 import { syncGoogleOnBookingDelete, syncGoogleOnBookingUpdate } from '@/lib/google/sync'
 import * as bookingsRepository from '@/lib/repositories/bookingsRepository'
@@ -20,6 +21,9 @@ export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ bookingId: string }> },
 ) {
+  const originResponse = mutatingOriginGuardResponse(req)
+  if (originResponse) return originResponse
+
   const scope = await getPractitionerIdOrAuthResponse(req)
   if (scope.response) return scope.response
   const practitionerId = scope.practitionerId
@@ -124,6 +128,9 @@ export async function DELETE(
   req: NextRequest,
   context: { params: Promise<{ bookingId: string }> },
 ) {
+  const originResponse = mutatingOriginGuardResponse(req)
+  if (originResponse) return originResponse
+
   const scope = await getPractitionerIdOrAuthResponse(req)
   if (scope.response) return scope.response
   const practitionerId = scope.practitionerId

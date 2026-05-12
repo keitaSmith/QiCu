@@ -444,7 +444,7 @@ Added auth route behavior:
 
 Session cookies contain only the opaque plaintext session token. They do not contain user IDs, practitioner IDs, database UUIDs, email, or claims. Password hashes, session token hashes, plaintext session tokens, and database UUIDs are not returned publicly.
 
-Login/logout POST routes include a small same-origin guard that rejects requests with an `Origin` header that does not match the request origin. This is not a full CSRF token system; later auth enforcement phases should revisit CSRF/origin protection for all cookie-authenticated mutating routes.
+Login/logout POST routes include a small same-origin guard that rejects requests with an `Origin` header that does not match the request origin. Later hardening extended the same shared guard to protected mutating domain routes. This is still not a full CSRF token system; a future production pass can add CSRF tokens if QiCu needs stronger browser form protections.
 
 Current domain behavior remains unchanged. H.2 did not enforce auth on patients, bookings, sessions, services, lifecycle/Trash, Google, or export routes. `getPractitionerIdFromRequest`, `x-qicu-practitioner-id`, dashboard practitioner context, Google OAuth/encrypted token behavior, and existing API response shapes remain unchanged. No real credentials are seeded.
 
@@ -568,6 +568,7 @@ Security audit findings:
 - Auth error responses are clean and do not expose stack traces, session tokens, password hashes, token hashes, or DB UUIDs.
 - Login uses a generic invalid-credentials response so callers cannot distinguish unknown email from wrong password.
 - Login/logout POST routes include a same-origin guard for clearly cross-origin requests.
+- Cookie-authenticated mutating domain routes now use the same shared origin guard. Requests with a mismatched `Origin` header return `403`, and strict/production mode also rejects browser fetch metadata marked `cross-site` when `Origin` is absent.
 - Google access/refresh tokens remain encrypted at rest and hidden from public responses; strict auth scope protects the Google integration routes that use them.
 - In strict mode, spoofed `x-qicu-practitioner-id` headers cannot change the authenticated practitioner's scope.
 
@@ -589,7 +590,7 @@ Production recommendations:
 - Continue setting `QICU_AUTH_ENFORCEMENT=strict` explicitly in production for clarity, deployment review, and operational consistency.
 - Set a strong `GOOGLE_TOKEN_ENCRYPTION_KEY` before using Google token persistence paths.
 - Use a strong database password or managed PostgreSQL with backups and restricted network access.
-- Add broader CSRF hardening before real sensitive deployment. SameSite and login/logout origin checks help, but cookie-authenticated mutating domain routes should eventually use a consistent CSRF/origin strategy.
+- Consider full CSRF-token hardening before real sensitive deployment if QiCu needs protection beyond SameSite cookies and the shared origin/fetch-metadata guard.
 - Polish login UX and add signup/invite, password reset, and email verification flows before onboarding real users.
 - Consider middleware/page redirects after the product decides how unauthenticated dashboard visits should behave.
 
@@ -597,7 +598,7 @@ Out of scope and remaining future work:
 
 - Polished login page and redirect UX.
 - Signup, practitioner invite, password reset, and email verification.
-- CSRF protection beyond the current login/logout origin guard.
+- CSRF token protection beyond the shared origin/fetch-metadata guard.
 - Middleware/page-level dashboard redirects.
 - Production-only removal or disabling of demo fallback.
 - Organization/multi-practitioner account model expansion.
@@ -615,7 +616,7 @@ The first browser login flow is now in place so strict mode can be used from the
 - The profile menu includes a minimal sign-out action that posts to `POST /api/auth/logout`, clears the server session cookie, and returns the browser to `/login`.
 - Demo mode remains available only when strict auth is not enabled and demo fallback is allowed. In local development/tests, the existing practitioner switcher and `x-qicu-practitioner-id` header behavior remain available.
 
-No signup, invite flow, password reset, email verification, middleware enforcement, schema change, or business/domain response shape change was added. Remaining auth UX work includes a polished login experience, account recovery flows, invite/onboarding, broader CSRF hardening, and production-only demo fallback removal.
+No signup, invite flow, password reset, email verification, middleware enforcement, schema change, or business/domain response shape change was added. Remaining auth UX work includes a polished login experience, account recovery flows, invite/onboarding, optional CSRF token hardening, and production operator runbooks.
 
 ## Local Development Auth Fixture
 
@@ -709,3 +710,17 @@ QiCu now hardens the auth mode boundary so production cannot accidentally use de
 - Local development and tests still preserve the demo practitioner switcher and header fallback when strict auth is not enabled.
 
 This is a hardening step, not a new auth feature. Business/domain success responses remain unchanged, and the local dev auth fixture plus demo tooling remain available outside production.
+
+## Mutating route origin guard note
+
+QiCu now has a shared origin guard for cookie-authenticated state-changing API routes:
+
+- `POST`, `PATCH`, and `DELETE` handlers on protected practitioner-scoped domain routes reject clearly cross-origin requests with `{ "error": "Forbidden" }` and status `403`.
+- The guard rejects a mismatched `Origin` header in every environment.
+- In strict/production auth mode, it also rejects requests without `Origin` when browser fetch metadata explicitly reports `Sec-Fetch-Site: cross-site`.
+- Missing `Origin` remains allowed when no browser cross-site metadata is present so non-browser clients, tests, and local tooling stay compatible.
+- Read-only `GET` routes are not blocked by this mutating-route guard.
+- Login/logout now reuse the same helper.
+- The Google OAuth callback remains compatible because it is a redirect callback flow and is not protected by the mutating POST guard.
+
+This is an origin/fetch-metadata hardening pass, not a full CSRF token system. A future production security pass can add CSRF tokens if QiCu needs stronger browser form protections.
