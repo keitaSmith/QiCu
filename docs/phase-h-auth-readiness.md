@@ -584,7 +584,9 @@ Production recommendations:
 
 - Set `QICU_AUTH_ENFORCEMENT=strict` in production.
 - Serve production over HTTPS so `Secure` session cookies are sent correctly.
-- Do not rely on demo practitioner fallback in production. Consider disabling demo mode or guarding it behind `NODE_ENV !== "production"` in a future hardening pass.
+- Do not rely on demo practitioner fallback in production.
+- QiCu now treats `NODE_ENV=production` as strict auth by default even when `QICU_AUTH_ENFORCEMENT` is missing or misconfigured, so production will not silently fall back to the demo/header scope path.
+- Continue setting `QICU_AUTH_ENFORCEMENT=strict` explicitly in production for clarity, deployment review, and operational consistency.
 - Set a strong `GOOGLE_TOKEN_ENCRYPTION_KEY` before using Google token persistence paths.
 - Use a strong database password or managed PostgreSQL with backups and restricted network access.
 - Add broader CSRF hardening before real sensitive deployment. SameSite and login/logout origin checks help, but cookie-authenticated mutating domain routes should eventually use a consistent CSRF/origin strategy.
@@ -611,7 +613,7 @@ The first browser login flow is now in place so strict mode can be used from the
 - Failed login shows the same generic invalid-credentials message used by the API and does not reveal whether the email or password was wrong.
 - The dashboard layout checks `/api/auth/me`; when the auth response indicates strict enforcement and no session is present, it redirects to `/login` instead of leaving the UI in a broken `401` state.
 - The profile menu includes a minimal sign-out action that posts to `POST /api/auth/logout`, clears the server session cookie, and returns the browser to `/login`.
-- Demo mode remains available when strict mode is not enabled. In demo mode, the existing practitioner switcher and `x-qicu-practitioner-id` header behavior remain available for local development/tests.
+- Demo mode remains available only when strict auth is not enabled and demo fallback is allowed. In local development/tests, the existing practitioner switcher and `x-qicu-practitioner-id` header behavior remain available.
 
 No signup, invite flow, password reset, email verification, middleware enforcement, schema change, or business/domain response shape change was added. Remaining auth UX work includes a polished login experience, account recovery flows, invite/onboarding, broader CSRF hardening, and production-only demo fallback removal.
 
@@ -656,4 +658,54 @@ The strict-mode browser flow has been smoke-tested locally:
 
 The local fixture remains development-only. It refuses to run in production, hashes the password through the existing password helper, stores no plaintext password, links the dev user to `prac-keita-smith`, and is idempotent.
 
-Production readiness is tracked in `docs/auth-production-readiness-checklist.md`. Production should set `QICU_AUTH_ENFORCEMENT=strict`, use HTTPS, configure production PostgreSQL, set `GOOGLE_TOKEN_ENCRYPTION_KEY` before Google token paths are used, avoid demo fallback, and provision real users through a future signup/invite/admin flow.
+Production readiness is tracked in `docs/auth-production-readiness-checklist.md`. Production should set `QICU_AUTH_ENFORCEMENT=strict`, use HTTPS, configure production PostgreSQL, set `GOOGLE_TOKEN_ENCRYPTION_KEY` before Google token paths are used, avoid demo fallback, and provision real users through a future signup/invite/admin flow. As a safety backstop, `NODE_ENV=production` now behaves as strict auth by default even if `QICU_AUTH_ENFORCEMENT` is omitted.
+
+## Admin User Provisioning Command
+
+QiCu now includes an operator/admin CLI for intentional user creation without public signup:
+
+```bash
+QICU_CREATE_USER_EMAIL="practitioner@example.com" \
+QICU_CREATE_USER_PASSWORD="StrongPassword123!" \
+QICU_CREATE_USER_NAME="Practitioner Name" \
+QICU_CREATE_USER_PRACTITIONER_ID="prac-keita-smith" \
+npm run auth:create-user
+```
+
+Optional relink override:
+
+```bash
+QICU_CREATE_USER_ALLOW_RELINK=true
+```
+
+This command:
+
+- Requires `DATABASE_URL` and all `QICU_CREATE_USER_*` inputs.
+- Resolves the practitioner from the existing public practitioner ID.
+- Hashes the password with the existing password helper and stores no plaintext password.
+- Creates or updates the user by normalized email.
+- Creates or updates the password credential.
+- Links the user to the target practitioner.
+- Prints only safe public output: email, practitioner public ID, and practitioner display name.
+- Rejects unknown practitioner IDs, weak passwords, unsafe relinking, and silent reassignment by default.
+
+The local dev auth fixture remains separate:
+
+- `npm run db:seed:auth-dev`
+- local-only
+- refuses in production
+- fixed `dev@qicu.local` credential for smoke testing
+
+This admin CLI is an operator path, not public onboarding. Signup, invite email flow, password reset, and email verification remain future work.
+
+## Production auth hardening note
+
+QiCu now hardens the auth mode boundary so production cannot accidentally use demo/header fallback:
+
+- `QICU_AUTH_ENFORCEMENT=strict` still forces strict auth in any environment.
+- `NODE_ENV=production` now also behaves as strict auth by default, even if `QICU_AUTH_ENFORCEMENT` is missing or set to a non-strict value.
+- In production, practitioner scope does not fall back to `x-qicu-practitioner-id` or the demo default practitioner.
+- In production, unauthenticated dashboard loads continue to go to `/login` rather than reviving demo mode from local storage or header state.
+- Local development and tests still preserve the demo practitioner switcher and header fallback when strict auth is not enabled.
+
+This is a hardening step, not a new auth feature. Business/domain success responses remain unchanged, and the local dev auth fixture plus demo tooling remain available outside production.

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 
+import { isStrictAuthEnforcementEnabled } from '@/lib/auth/authMode'
 import { CURRENT_PRACTITIONER_HEADER } from '@/lib/practitioners'
 import * as practitionersRepository from '@/lib/repositories/practitionersRepository'
 import { getCurrentAuthSessionFromRequest } from './session'
@@ -26,7 +27,7 @@ export class AuthScopeError extends Error {
 }
 
 export function isAuthEnforcementStrict() {
-  return process.env.QICU_AUTH_ENFORCEMENT === 'strict'
+  return isStrictAuthEnforcementEnabled()
 }
 
 export function authScopeErrorResponse(error: unknown) {

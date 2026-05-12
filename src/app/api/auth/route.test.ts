@@ -21,6 +21,9 @@ import { POST as LOGOUT } from './logout/route'
 import { GET as ME } from './me/route'
 
 const createdUserIds = new Set<string>()
+const originalAuthEnforcement = process.env.QICU_AUTH_ENFORCEMENT
+const originalNodeEnv = process.env.NODE_ENV
+const mutableEnv = process.env as Record<string, string | undefined>
 
 async function createTestUser(password = 'test password that is long enough') {
   const id = randomUUID()
@@ -75,6 +78,11 @@ afterEach(async () => {
     }
   }
   createdUserIds.clear()
+
+  if (originalAuthEnforcement === undefined) Reflect.deleteProperty(process.env, 'QICU_AUTH_ENFORCEMENT')
+  else process.env.QICU_AUTH_ENFORCEMENT = originalAuthEnforcement
+  if (originalNodeEnv === undefined) Reflect.deleteProperty(process.env, 'NODE_ENV')
+  else mutableEnv.NODE_ENV = originalNodeEnv
 })
 
 function buildJsonRequest(path: string, body: Record<string, unknown>, init?: { origin?: string; cookie?: string }) {
@@ -250,6 +258,8 @@ test('current-session helper accepts valid sessions and rejects expired or revok
 })
 
 test('/api/auth/me returns safe public auth state', async t => {
+  mutableEnv.NODE_ENV = 'development'
+  Reflect.deleteProperty(process.env, 'QICU_AUTH_ENFORCEMENT')
   const setup = await createTestUser()
   if (!setup.available || !setup.user) {
     t.skip('PostgreSQL auth tables are not available for this test run.')
@@ -280,4 +290,15 @@ test('/api/auth/me returns safe public auth state', async t => {
   const anonymous = await ME(new NextRequest('http://localhost:3000/api/auth/me'))
   assert.equal(anonymous.headers.get('x-qicu-auth-enforcement'), 'legacy')
   assert.deepEqual(await anonymous.json(), { authenticated: false })
+})
+
+test('/api/auth/me reports strict mode in production even when QICU_AUTH_ENFORCEMENT is not set', async () => {
+  mutableEnv.NODE_ENV = 'production'
+  Reflect.deleteProperty(process.env, 'QICU_AUTH_ENFORCEMENT')
+
+  const response = await ME(new NextRequest('http://localhost:3000/api/auth/me'))
+
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('x-qicu-auth-enforcement'), 'strict')
+  assert.deepEqual(await response.json(), { authenticated: false })
 })

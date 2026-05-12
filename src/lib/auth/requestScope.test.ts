@@ -24,8 +24,10 @@ import { GET as GET_TRASH } from '@/app/api/trash/route'
 import { getPractitionerScopeForRequest } from './requestScope'
 
 const createdUserIds = new Set<string>()
-const linkedPractitionerIds = new Set<string>()
+const linkedPractitionerOriginalUserIds = new Map<string, string | null>()
 const originalAuthEnforcement = process.env.QICU_AUTH_ENFORCEMENT
+const originalNodeEnv = process.env.NODE_ENV
+const mutableEnv = process.env as Record<string, string | undefined>
 const originalGoogleClientId = process.env.GOOGLE_CLIENT_ID
 const originalGoogleClientSecret = process.env.GOOGLE_CLIENT_SECRET
 const originalGoogleRedirectUri = process.env.GOOGLE_REDIRECT_URI
@@ -48,11 +50,18 @@ async function createUser(linkedPractitionerPublicId?: keyof typeof demoPractiti
 
     if (linkedPractitionerPublicId) {
       const databasePractitionerId = demoPractitionerIds[linkedPractitionerPublicId]
+      if (!linkedPractitionerOriginalUserIds.has(databasePractitionerId)) {
+        const existing = await drizzleDb
+          .select({ userId: practitioners.userId })
+          .from(practitioners)
+          .where(eq(practitioners.id, databasePractitionerId))
+          .limit(1)
+        linkedPractitionerOriginalUserIds.set(databasePractitionerId, existing[0]?.userId ?? null)
+      }
       await drizzleDb
         .update(practitioners)
         .set({ userId: id })
         .where(eq(practitioners.id, databasePractitionerId))
-      linkedPractitionerIds.add(databasePractitionerId)
     }
 
     return { available: true as const, user: rows[0] }
@@ -73,10 +82,18 @@ function setStrictAuth() {
   process.env.QICU_AUTH_ENFORCEMENT = 'strict'
 }
 
+function setProductionLikeAuth() {
+  Reflect.deleteProperty(process.env, 'QICU_AUTH_ENFORCEMENT')
+  mutableEnv.NODE_ENV = 'production'
+}
+
 afterEach(async () => {
-  for (const practitionerId of linkedPractitionerIds) {
+  for (const [practitionerId, originalUserId] of linkedPractitionerOriginalUserIds) {
     try {
-      await drizzleDb.update(practitioners).set({ userId: null }).where(eq(practitioners.id, practitionerId))
+      await drizzleDb
+        .update(practitioners)
+        .set({ userId: originalUserId })
+        .where(eq(practitioners.id, practitionerId))
     } catch {
       // Cleanup should not hide test failures.
     }
@@ -89,10 +106,12 @@ afterEach(async () => {
     }
   }
   createdUserIds.clear()
-  linkedPractitionerIds.clear()
+  linkedPractitionerOriginalUserIds.clear()
 
-  if (originalAuthEnforcement === undefined) delete process.env.QICU_AUTH_ENFORCEMENT
+  if (originalAuthEnforcement === undefined) Reflect.deleteProperty(process.env, 'QICU_AUTH_ENFORCEMENT')
   else process.env.QICU_AUTH_ENFORCEMENT = originalAuthEnforcement
+  if (originalNodeEnv === undefined) Reflect.deleteProperty(process.env, 'NODE_ENV')
+  else mutableEnv.NODE_ENV = originalNodeEnv
 
   if (originalGoogleClientId === undefined) delete process.env.GOOGLE_CLIENT_ID
   else process.env.GOOGLE_CLIENT_ID = originalGoogleClientId
@@ -157,6 +176,8 @@ test('strict mode rejects missing, expired, and revoked sessions without header 
 })
 
 test('legacy mode preserves current header/default behavior', async () => {
+  mutableEnv.NODE_ENV = 'development'
+  Reflect.deleteProperty(process.env, 'QICU_AUTH_ENFORCEMENT')
   const headerScope = await getPractitionerScopeForRequest(
     new NextRequest('http://localhost:3000/api/bookings', {
       headers: { 'x-qicu-practitioner-id': 'prac-keita-smith' },
@@ -168,6 +189,20 @@ test('legacy mode preserves current header/default behavior', async () => {
   assert.equal(headerScope.source, 'legacy-header')
   assert.equal(defaultScope.practitionerId, 'prac-tom-cook')
   assert.equal(defaultScope.source, 'legacy-header')
+})
+
+test('production defaults to strict scope and rejects legacy header fallback without a session', async () => {
+  setProductionLikeAuth()
+
+  await assert.rejects(
+    () =>
+      getPractitionerScopeForRequest(
+        new NextRequest('http://localhost:3000/api/bookings', {
+          headers: { 'x-qicu-practitioner-id': 'prac-tom-cook' },
+        }),
+      ),
+    /Authentication is required/,
+  )
 })
 
 test('user with no linked practitioner is rejected with a clear scope error', async t => {
@@ -211,6 +246,26 @@ test('representative booking route returns 401 in strict mode without session an
   const bookings = await validSession.json()
   assert.ok(Array.isArray(bookings))
   assert.equal(bookings.every((booking: { practitionerId?: string }) => booking.practitionerId === 'prac-tom-cook'), true)
+})
+
+test('production strict-by-default mode ignores spoofed headers and uses the authenticated practitioner session', async t => {
+  const setup = await createUser('prac-keita-smith')
+  if (!setup.available || !setup.user) {
+    t.skip('PostgreSQL auth tables are not available for this test run.')
+    return
+  }
+  setProductionLikeAuth()
+
+  const cookie = await createSessionCookie(setup.user.id)
+  const response = await GET_BOOKINGS(
+    new NextRequest('http://localhost:3000/api/bookings', {
+      headers: { cookie, 'x-qicu-practitioner-id': 'prac-tom-cook' },
+    }),
+  )
+
+  assert.equal(response.status, 200)
+  const bookings = await response.json()
+  assert.equal(bookings.every((booking: { practitionerId?: string }) => booking.practitionerId === 'prac-keita-smith'), true)
 })
 
 test('representative protected routes return 401 in strict mode without a session', async t => {

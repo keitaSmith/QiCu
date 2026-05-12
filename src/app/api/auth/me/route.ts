@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { isAuthEnforcementStrict } from '@/lib/auth/requestScope'
+import { getAuthEnforcementMode } from '@/lib/auth/authMode'
 import { getCurrentAuthSessionFromRequest } from '@/lib/auth/session'
 
 const AUTH_ENFORCEMENT_HEADER = 'x-qicu-auth-enforcement'
 
 function authStateResponse(body: unknown, status = 200) {
   const response = NextResponse.json(body, { status })
-  response.headers.set(AUTH_ENFORCEMENT_HEADER, isAuthEnforcementStrict() ? 'strict' : 'legacy')
+  response.headers.set(AUTH_ENFORCEMENT_HEADER, getAuthEnforcementMode())
   return response
 }
 

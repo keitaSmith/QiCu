@@ -311,6 +311,21 @@ Post-auth strict-mode checkpoint note:
 - Production must keep `QICU_AUTH_ENFORCEMENT=strict`, use HTTPS, configure production PostgreSQL, set `GOOGLE_TOKEN_ENCRYPTION_KEY` before Google token paths are used, and avoid the dev auth fixture/demo fallback.
 - Remaining production auth work includes signup/invite/admin provisioning, password reset/email verification, broader CSRF/origin handling for cookie-authenticated mutating routes, optional middleware/page redirects, and production-only demo fallback removal.
 
+Admin auth provisioning note:
+
+- `npm run auth:create-user` now provides an explicit operator/admin path for creating or updating a password-backed user and linking that user to an existing practitioner by public practitioner ID.
+- The command requires `DATABASE_URL`, `QICU_CREATE_USER_EMAIL`, `QICU_CREATE_USER_PASSWORD`, `QICU_CREATE_USER_NAME`, and `QICU_CREATE_USER_PRACTITIONER_ID`.
+- It hashes passwords through the existing auth helper, stores no plaintext password, prints only safe public fields, and rejects unsafe practitioner relinking by default.
+- `QICU_CREATE_USER_ALLOW_RELINK=true` is required for intentional practitioner/user relinking.
+- The local dev auth fixture remains separate under `npm run db:seed:auth-dev` and still refuses in production.
+
+Production auth hardening note:
+
+- Production no longer allows accidental demo/header practitioner fallback.
+- `QICU_AUTH_ENFORCEMENT=strict` remains the explicit production setting and should still be configured in deployed environments.
+- As a safety backstop, `NODE_ENV=production` now behaves as strict auth by default even if `QICU_AUTH_ENFORCEMENT` is missing or misconfigured.
+- Local development and test mode still preserve demo/header fallback when strict auth is not enabled.
+
 ## Repository naming and responsibilities
 
 | Repository | Responsibility | Example methods | Current store/API equivalent |

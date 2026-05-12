@@ -6,6 +6,7 @@ import {
   DEMO_PRACTITIONERS,
   type Practitioner,
 } from '@/lib/practitioners'
+import { isProductionLikeEnvironment } from '@/lib/auth/authMode'
 
 const STORAGE_KEY = 'qicu:current-practitioner-id'
 
@@ -34,12 +35,14 @@ export function PractitionerProvider({ children }: { children: ReactNode }) {
 
     async function loadAuthState() {
       let hasSessionPractitioner = false
+      let requiresAuth = isProductionLikeEnvironment()
       try {
         const response = await fetch('/api/auth/me', {
           cache: 'no-store',
           credentials: 'include',
         })
-        const requiresAuth = response.headers.get('x-qicu-auth-enforcement') === 'strict'
+        requiresAuth =
+          response.headers.get('x-qicu-auth-enforcement') === 'strict' || isProductionLikeEnvironment()
         const data = await response.json().catch(() => null)
         const practitioner = data?.authenticated && data?.practitioner?.id
           ? {
@@ -68,9 +71,11 @@ export function PractitionerProvider({ children }: { children: ReactNode }) {
       } finally {
         if (!cancelled) {
           if (!hasSessionPractitioner) {
-            const saved = typeof window !== 'undefined' ? window.localStorage.getItem(STORAGE_KEY) : null
-            if (saved && DEMO_PRACTITIONERS.some(practitioner => practitioner.id === saved)) {
-              setPractitionerIdState(saved)
+            if (!requiresAuth) {
+              const saved = typeof window !== 'undefined' ? window.localStorage.getItem(STORAGE_KEY) : null
+              if (saved && DEMO_PRACTITIONERS.some(practitioner => practitioner.id === saved)) {
+                setPractitionerIdState(saved)
+              }
             }
           }
           setAuthLoading(false)
@@ -80,7 +85,7 @@ export function PractitionerProvider({ children }: { children: ReactNode }) {
 
     loadAuthState().catch(() => {
       if (!cancelled) {
-        setAuthRequired(false)
+        setAuthRequired(isProductionLikeEnvironment())
         setAuthLoading(false)
       }
     })
