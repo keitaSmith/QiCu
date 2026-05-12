@@ -20,6 +20,7 @@ type Props<T extends string> = {
   placeholder?: string
   searchPlaceholder?: string
   noResultsText?: string
+  resultLabel?: string
   required?: boolean
   helperText?: string
   error?: string
@@ -36,6 +37,7 @@ export default function SearchableSelectField<T extends string>({
   placeholder = 'Select an option',
   searchPlaceholder = 'Type to search…',
   noResultsText = 'No matches found.',
+  resultLabel = 'options',
   required,
   helperText,
   error,
@@ -133,7 +135,7 @@ export default function SearchableSelectField<T extends string>({
         {isOpen ? (
           <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-md bg-surface text-sm shadow-lg ring-1 ring-black/5 focus:outline-none">
             <div className="px-3 py-2 text-xs text-ink/50">
-              {query.trim() ? searchPlaceholder : `Showing ${Math.min(initialVisibleCount, options.length)} patients. Start typing to filter.`}
+              {query.trim() ? searchPlaceholder : `Showing ${Math.min(initialVisibleCount, options.length)} ${resultLabel}. Start typing to filter.`}
             </div>
             {filteredOptions.length === 0 ? (
               <div className="px-3 py-2 text-sm text-ink/60">{noResultsText}</div>

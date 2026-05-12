@@ -42,3 +42,22 @@ export const authSessions = pgTable(
     index('auth_sessions_expires_at_idx').on(table.expiresAt),
   ],
 )
+
+export const userRoles = pgTable(
+  'user_roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id),
+  },
+  table => [
+    uniqueIndex('user_roles_user_id_role_unique').on(table.userId, table.role),
+    index('user_roles_user_id_idx').on(table.userId),
+    index('user_roles_role_idx').on(table.role),
+  ],
+)

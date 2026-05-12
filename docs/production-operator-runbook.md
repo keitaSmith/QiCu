@@ -43,6 +43,21 @@ Do not run `npm run db:seed:auth-dev` in production. That seed is local-developm
 
 ## 3. User Provisioning Runbook
 
+QiCu now supports two operator provisioning paths:
+
+- Dashboard UI: `/dashboard/admin/users`
+- CLI: `npm run auth:create-user`
+
+The dashboard UI is internal-only. It requires an authenticated session with the persisted `admin` role. `QICU_ADMIN_EMAILS` remains available as a temporary/bootstrap fallback, using a comma-separated environment allowlist such as:
+
+```bash
+QICU_ADMIN_EMAILS="owner@example.com,ops@example.com"
+```
+
+If the signed-in user has neither the DB `admin` role nor a bootstrap allowlist match, the admin API returns `403`.
+
+The first UI is available by direct URL only; it is not yet linked from the main dashboard navigation. It now loads a safe searchable practitioner list so operators can choose an existing practitioner by name, email, or public ID instead of memorizing public IDs.
+
 Create a real login user with the operator command:
 
 ```bash
@@ -69,6 +84,31 @@ Safety guidance:
 Expected success output should confirm only safe public details such as the email address and practitioner public ID. It must not print the password, password hash, or database UUIDs.
 
 If the target practitioner is already linked to another user, the command refuses by default. Re-run only with `QICU_CREATE_USER_ALLOW_RELINK=true` when the relink is intentional and approved.
+
+The dashboard form follows the same rules as the CLI:
+
+- It resolves the practitioner by public practitioner ID.
+- It hashes the password with the existing password helper.
+- It stores no plaintext password.
+- It rejects unknown practitioners, weak passwords, and unsafe relinks by default.
+- It returns only safe public user/practitioner fields.
+
+Admin role management commands:
+
+```bash
+QICU_ADMIN_ROLE_EMAIL="operator@example.com" npm run auth:grant-admin
+QICU_ADMIN_ROLE_EMAIL="operator@example.com" npm run auth:revoke-admin
+```
+
+Both commands require `DATABASE_URL`, operate on an existing user, are idempotent, and print only safe public output: email, role, and action.
+
+Bootstrap flow:
+
+1. Create the first operator user with `npm run auth:create-user`.
+2. Temporarily set `QICU_ADMIN_EMAILS` for that operator email if no DB admin exists yet.
+3. Sign in and verify `/dashboard/admin/users`, or run `npm run auth:grant-admin`.
+4. Grant the durable DB `admin` role.
+5. Remove `QICU_ADMIN_EMAILS` if you no longer need the bootstrap fallback.
 
 ## 4. Manual Production Smoke Test
 
@@ -110,6 +150,7 @@ Operational reminders:
 ## 6. Security Operations Notes
 
 - Strict auth is the production default and should remain enabled.
+- Admin user provisioning through `/dashboard/admin/users` requires the DB `admin` role, with `QICU_ADMIN_EMAILS` kept only as bootstrap fallback.
 - Demo fallback is for local development and tests only.
 - Mutating API routes use the shared origin guard; clearly cross-origin requests are rejected.
 - SameSite cookies are still useful, but they are not the only browser protection QiCu uses.
@@ -164,6 +205,14 @@ Operational reminders:
 - The target practitioner is already linked to another user, or the existing user is already linked to a different practitioner.
 - Re-run only with `QICU_CREATE_USER_ALLOW_RELINK=true` after operator approval.
 
+### Admin UI returns `403`
+
+- Confirm you are logged in.
+- Confirm your user has the DB `admin` role.
+- If bootstrapping, confirm your login email appears in `QICU_ADMIN_EMAILS`.
+- Confirm the environment variable is comma-separated and uses the same email address as `/api/auth/me`.
+- If `QICU_ADMIN_EMAILS` is intentionally empty, only users with the persisted admin role can access the admin UI.
+
 ### `db:seed:auth-dev` was attempted in production
 
 - Stop and do not use it.
@@ -178,6 +227,8 @@ Operational reminders:
 ## 8. Remaining Future Production Work
 
 - Invite/admin UI for routine account provisioning
+- Admin role management UI
+- Audit logs for role changes
 - Password reset
 - Email verification
 - Optional CSRF-token strategy
@@ -185,4 +236,3 @@ Operational reminders:
 - Account management UI
 - Backup and restore procedures
 - A production operator handbook for escalation and rollback
-

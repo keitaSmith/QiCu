@@ -1,13 +1,15 @@
 import { and, eq, gt, isNull } from 'drizzle-orm'
 
 import { drizzleDb } from '@/db/client'
-import { authSessions, passwordCredentials, practitioners, users } from '@/db/schema'
+import { authSessions, passwordCredentials, practitioners, userRoles, users } from '@/db/schema'
 import { demoPractitionerIds } from '@/db/seeds/ids'
 
 type SessionMetadata = {
   userAgent?: string | null
   ipHash?: string | null
 }
+
+export type UserRole = 'admin'
 
 const databasePractitionerIdToPublicId = Object.fromEntries(
   Object.entries(demoPractitionerIds).map(([publicId, databaseId]) => [databaseId, publicId]),
@@ -145,4 +147,72 @@ export async function revokeAllUserSessions(userId: string) {
     .set({ revokedAt: new Date() })
     .where(and(eq(authSessions.userId, userId), isNull(authSessions.revokedAt)))
     .returning()
+}
+
+export async function hasUserRole(userId: string, role: UserRole) {
+  const rows = await drizzleDb
+    .select({ id: userRoles.id })
+    .from(userRoles)
+    .where(and(eq(userRoles.userId, userId), eq(userRoles.role, role)))
+    .limit(1)
+
+  return rows.length > 0
+}
+
+export async function grantUserRoleByEmail(email: string, role: UserRole, createdByUserId?: string | null) {
+  const user = await getUserByEmail(email)
+  if (!user) return null
+
+  const rows = await drizzleDb
+    .insert(userRoles)
+    .values({
+      userId: user.id,
+      role,
+      createdByUserId: createdByUserId ?? null,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [userRoles.userId, userRoles.role],
+      set: {
+        updatedAt: new Date(),
+      },
+    })
+    .returning()
+
+  return {
+    email: user.email,
+    role,
+    granted: rows[0] ?? null,
+  }
+}
+
+export async function revokeUserRoleByEmail(email: string, role: UserRole) {
+  const user = await getUserByEmail(email)
+  if (!user) return null
+
+  const rows = await drizzleDb
+    .delete(userRoles)
+    .where(and(eq(userRoles.userId, user.id), eq(userRoles.role, role)))
+    .returning()
+
+  return {
+    email: user.email,
+    role,
+    revoked: rows.length > 0,
+  }
+}
+
+export async function listUserRolesByEmail(email: string) {
+  const user = await getUserByEmail(email)
+  if (!user) return null
+
+  const rows = await drizzleDb
+    .select({ role: userRoles.role })
+    .from(userRoles)
+    .where(eq(userRoles.userId, user.id))
+
+  return {
+    email: user.email,
+    roles: rows.map(row => row.role),
+  }
 }

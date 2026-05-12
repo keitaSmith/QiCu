@@ -40,6 +40,23 @@ Safety notes:
 
 ## Admin Provisioning Command
 
+Internal dashboard provisioning is available at `/dashboard/admin/users` for authenticated operators with the persisted DB `admin` role. `QICU_ADMIN_EMAILS` remains as a temporary/bootstrap fallback. The allowlist is comma-separated and case-insensitive:
+
+```bash
+QICU_ADMIN_EMAILS="owner@example.com,ops@example.com"
+```
+
+If a user has neither the DB `admin` role nor a bootstrap allowlist match, the admin UI/API denies access.
+
+Role commands:
+
+```bash
+QICU_ADMIN_ROLE_EMAIL="operator@example.com" npm run auth:grant-admin
+QICU_ADMIN_ROLE_EMAIL="operator@example.com" npm run auth:revoke-admin
+```
+
+The admin page includes a searchable practitioner picker that lists safe public practitioner fields, so operators do not normally need to type public practitioner IDs by hand.
+
 Operator command:
 
 ```bash
@@ -70,6 +87,8 @@ Behavior and guardrails:
 
 This is an operator/admin path, not public signup or invite onboarding. Do not paste real passwords into committed files, shell history that is shared, or production docs.
 
+The dashboard admin form and CLI share the same provisioning rules: password hashing, public practitioner ID lookup, safe output only, and conservative relink behavior.
+
 ## Required Production Settings
 
 - Set `QICU_AUTH_ENFORCEMENT=strict`.
@@ -80,6 +99,7 @@ This is an operator/admin path, not public signup or invite onboarding. Do not p
 - Do not run or rely on `npm run db:seed:auth-dev` in production.
 - Do not rely on demo practitioner fallback in production.
 - Provision real users intentionally with `npm run auth:create-user` or a future invite/admin flow.
+- Grant durable admin access with `npm run auth:grant-admin`; use `QICU_ADMIN_EMAILS` only as a bootstrap fallback when needed.
 
 Production auth hardening note:
 
@@ -100,11 +120,13 @@ Production auth hardening note:
 - Mutating API routes use a shared origin guard. Requests with a clearly cross-origin `Origin` header return `403`, and strict/production mode also rejects browser fetch metadata marked `cross-site` when `Origin` is absent.
 - Missing `Origin` without browser cross-site fetch metadata remains allowed for non-browser clients and local tooling.
 - Google token fields remain encrypted at rest and hidden from public responses.
+- Admin user provisioning requires an authenticated session plus the DB `admin` role or temporary `QICU_ADMIN_EMAILS` bootstrap fallback; practitioner public IDs are not treated as proof of admin access.
 
 ## Remaining Production Work
 
-- Add real signup, invite, or admin user provisioning.
-- Expand from the operator CLI to a fuller invite/admin provisioning workflow.
+- Add admin role management UI and audit logs for role changes.
+- Expand to a fuller invite/admin provisioning workflow.
+- Add real signup or invite onboarding if the product needs self-service or email-delivered account creation.
 - Add password reset and email verification flows.
 - Add a full CSRF-token strategy if the product needs stronger browser form protections beyond SameSite cookies and the shared origin/fetch-metadata guard.
 - Decide whether to add middleware/page-level redirects for protected dashboard pages.

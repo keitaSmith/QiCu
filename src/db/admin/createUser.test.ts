@@ -15,6 +15,8 @@ import {
   requireCreateUserEnvironment,
 } from './createUser'
 
+const AUTH_PROVISIONING_TEST_LOCK = 754301
+
 async function requireDatabaseOrSkip(t: { skip: (message: string) => void }) {
   try {
     await drizzleDb.execute(sql`select 1`)
@@ -29,37 +31,40 @@ async function withPractitionerState<T>(
   publicIds: Array<keyof typeof demoPractitionerIds>,
   run: (trackEmail: (email: string) => void) => Promise<T>,
 ) {
-  const databaseIds = publicIds.map((publicId) => demoPractitionerIds[publicId])
-  const before = await drizzleDb
-    .select()
-    .from(practitioners)
-    .where(inArray(practitioners.id, databaseIds))
+  return drizzleDb.transaction(async (lockTx) => {
+    await lockTx.execute(sql`select pg_advisory_xact_lock(${AUTH_PROVISIONING_TEST_LOCK})`)
+    const databaseIds = publicIds.map((publicId) => demoPractitionerIds[publicId])
+    const before = await drizzleDb
+      .select()
+      .from(practitioners)
+      .where(inArray(practitioners.id, databaseIds))
 
-  const originalUserIds = new Map(before.map((row) => [row.id, row.userId]))
-  const createdEmails = new Set<string>()
-  const trackEmail = (email: string) => {
-    createdEmails.add(email)
-  }
-
-  await drizzleDb
-    .update(practitioners)
-    .set({ userId: null })
-    .where(inArray(practitioners.id, databaseIds))
-
-  try {
-    return await run(trackEmail)
-  } finally {
-    for (const databaseId of databaseIds) {
-      await drizzleDb
-        .update(practitioners)
-        .set({ userId: originalUserIds.get(databaseId) ?? null })
-        .where(eq(practitioners.id, databaseId))
+    const originalUserIds = new Map(before.map((row) => [row.id, row.userId]))
+    const createdEmails = new Set<string>()
+    const trackEmail = (email: string) => {
+      createdEmails.add(email)
     }
 
-    if (createdEmails.size > 0) {
-      await drizzleDb.delete(users).where(inArray(users.email, [...createdEmails]))
+    await drizzleDb
+      .update(practitioners)
+      .set({ userId: null })
+      .where(inArray(practitioners.id, databaseIds))
+
+    try {
+      return await run(trackEmail)
+    } finally {
+      for (const databaseId of databaseIds) {
+        await drizzleDb
+          .update(practitioners)
+          .set({ userId: originalUserIds.get(databaseId) ?? null })
+          .where(eq(practitioners.id, databaseId))
+      }
+
+      if (createdEmails.size > 0) {
+        await drizzleDb.delete(users).where(inArray(users.email, [...createdEmails]))
+      }
     }
-  }
+  })
 }
 
 function buildInput(overrides: Partial<Parameters<typeof provisionAuthUser>[0]> = {}) {
@@ -97,6 +102,7 @@ test('create user provisions a hashed password credential and links the practiti
 
     assert.deepEqual(result, {
       email: input.email,
+      name: input.name,
       practitionerId: 'prac-tom-cook',
       practitionerName: practitioner?.displayName ?? 'Tom Cook',
     })

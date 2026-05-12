@@ -7,6 +7,7 @@ const expectedTables = [
   'users',
   'auth_sessions',
   'password_credentials',
+  'user_roles',
   'practitioners',
   'deletion_groups',
   'patients',

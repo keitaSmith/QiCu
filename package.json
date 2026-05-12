@@ -16,6 +16,8 @@
     "db:seed": "tsx src/db/seeds/seedDev.ts",
     "db:seed:auth-dev": "tsx src/db/seeds/seedDevAuth.ts",
     "auth:create-user": "tsx src/db/admin/createUser.ts",
+    "auth:grant-admin": "tsx src/db/admin/manageAdminRole.ts",
+    "auth:revoke-admin": "tsx src/db/admin/manageAdminRole.ts --revoke",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {

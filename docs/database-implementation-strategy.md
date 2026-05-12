@@ -320,6 +320,15 @@ Admin auth provisioning note:
 - `QICU_CREATE_USER_ALLOW_RELINK=true` is required for intentional practitioner/user relinking.
 - The local dev auth fixture remains separate under `npm run db:seed:auth-dev` and still refuses in production.
 
+Admin UI provisioning note:
+
+- `/dashboard/admin/users` and `POST /api/admin/users` provide a minimal authenticated operator UI/API for creating practitioner login accounts without public signup.
+- Admin access now supports a persisted DB `admin` role in `user_roles`. `QICU_ADMIN_EMAILS` remains as a comma-separated bootstrap fallback for authenticated user emails.
+- The admin API reuses the same provisioning helper as `npm run auth:create-user`, so password hashing, public practitioner ID lookup, safe output, and relink guardrails stay aligned.
+- `npm run auth:grant-admin` and `npm run auth:revoke-admin` manage the persisted admin role for existing users by email.
+- `/api/admin/practitioners` returns safe public practitioner fields for the admin UI, and `/dashboard/admin/users` now uses a searchable QiCu-styled practitioner picker instead of requiring manual public ID entry.
+- No signup, invite email delivery, password reset, email verification, organization model, business response shape change, or Google behavior change was added.
+
 Production auth hardening note:
 
 - Production no longer allows accidental demo/header practitioner fallback.

@@ -75,6 +75,23 @@ export async function listPractitioners() {
   )
 }
 
+export async function listPractitionersForAdmin() {
+  return runWithFallback(
+    async () => {
+      const rows = await drizzleDb
+        .select()
+        .from(practitioners)
+        .orderBy(asc(practitioners.displayName))
+
+      return rows.map(row => ({
+        ...toPublicPractitioner(row),
+        linkedToUser: Boolean(row.userId),
+      }))
+    },
+    () => fallbackPractitioners.map(practitioner => ({ ...practitioner, linkedToUser: false })),
+  )
+}
+
 export async function getById(practitionerId: string) {
   const trimmed = practitionerId.trim()
   if (!trimmed) return null
@@ -110,4 +127,3 @@ export async function getByIdOrDefault(practitionerId?: string | null) {
 export async function normalizePractitionerId(practitionerId?: string | null) {
   return (await getByIdOrDefault(practitionerId)).id
 }
-

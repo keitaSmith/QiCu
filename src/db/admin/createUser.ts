@@ -4,19 +4,9 @@ import { loadEnvConfig } from '@next/env'
 
 loadEnvConfig(process.cwd())
 
-export type CreateAuthUserInput = {
-  email: string
-  password: string
-  name: string
-  practitionerId: string
-  allowRelink: boolean
-}
+import { provisionAuthUser, type CreateAuthUserInput, type ProvisionedAuthUser } from '@/lib/auth/provisionUser'
 
-export type ProvisionedAuthUser = {
-  email: string
-  practitionerId: string
-  practitionerName: string
-}
+export { provisionAuthUser }
 
 const REQUIRED_ENV_VARS = [
   'QICU_CREATE_USER_EMAIL',
@@ -68,141 +58,6 @@ function describeDatabaseUrl(rawUrl: string) {
   } catch {
     return 'configured DATABASE_URL'
   }
-}
-
-export async function provisionAuthUser(input: CreateAuthUserInput): Promise<ProvisionedAuthUser> {
-  const [{ and, eq, ne }, client, schema, password, ids] = await Promise.all([
-    import('drizzle-orm'),
-    import('@/db/client'),
-    import('@/db/schema'),
-    import('@/lib/auth/password'),
-    import('@/db/seeds/ids'),
-  ])
-
-  const targetPractitionerDatabaseId =
-    ids.demoPractitionerIds[input.practitionerId as keyof typeof ids.demoPractitionerIds]
-
-  if (!targetPractitionerDatabaseId) {
-    throw new Error(`Unknown practitioner public ID: ${input.practitionerId}`)
-  }
-
-  const { drizzleDb } = client
-  const { passwordCredentials, practitioners, users } = schema
-
-  const passwordResult = await password.hashPassword(input.password)
-  const now = new Date()
-
-  return drizzleDb.transaction(async (tx) => {
-    const [targetPractitioner] = await tx
-      .select()
-      .from(practitioners)
-      .where(eq(practitioners.id, targetPractitionerDatabaseId))
-      .limit(1)
-
-    if (!targetPractitioner) {
-      throw new Error(`Practitioner ${input.practitionerId} was not found in the database.`)
-    }
-
-    const existingUsers = await tx
-      .select()
-      .from(users)
-      .where(eq(users.email, input.email))
-      .limit(1)
-
-    const existingUser = existingUsers[0] ?? null
-
-    if (existingUser) {
-      const [existingUserPractitioner] = await tx
-        .select()
-        .from(practitioners)
-        .where(eq(practitioners.userId, existingUser.id))
-        .limit(1)
-
-      if (
-        existingUserPractitioner &&
-        existingUserPractitioner.id !== targetPractitionerDatabaseId &&
-        !input.allowRelink
-      ) {
-        throw new Error(
-          `User ${input.email} is already linked to practitioner ${
-            existingUserPractitioner.displayName ?? existingUserPractitioner.id
-          }. Re-run with QICU_CREATE_USER_ALLOW_RELINK=true to move the link.`,
-        )
-      }
-    }
-
-    if (targetPractitioner.userId && targetPractitioner.userId !== existingUser?.id && !input.allowRelink) {
-      throw new Error(
-        `Practitioner ${input.practitionerId} is already linked to another user. Re-run with QICU_CREATE_USER_ALLOW_RELINK=true to relink it.`,
-      )
-    }
-
-    const [user] = await tx
-      .insert(users)
-      .values({
-        email: input.email,
-        name: input.name,
-        authProvider: 'password',
-        authProviderUserId: input.email,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: users.email,
-        set: {
-          name: input.name,
-          authProvider: 'password',
-          authProviderUserId: input.email,
-          updatedAt: now,
-        },
-      })
-      .returning()
-
-    if (!user) {
-      throw new Error('Failed to create or update the auth user.')
-    }
-
-    await tx
-      .insert(passwordCredentials)
-      .values({
-        userId: user.id,
-        passwordHash: passwordResult.hash,
-        passwordAlgorithm: passwordResult.algorithm,
-        passwordChangedAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: passwordCredentials.userId,
-        set: {
-          passwordHash: passwordResult.hash,
-          passwordAlgorithm: passwordResult.algorithm,
-          passwordChangedAt: now,
-          updatedAt: now,
-        },
-      })
-
-    if (input.allowRelink) {
-      await tx
-        .update(practitioners)
-        .set({ userId: null, updatedAt: now })
-        .where(and(eq(practitioners.userId, user.id), ne(practitioners.id, targetPractitionerDatabaseId)))
-
-      await tx
-        .update(practitioners)
-        .set({ userId: null, updatedAt: now })
-        .where(and(eq(practitioners.id, targetPractitionerDatabaseId), ne(practitioners.userId, user.id)))
-    }
-
-    await tx
-      .update(practitioners)
-      .set({ userId: user.id, updatedAt: now })
-      .where(eq(practitioners.id, targetPractitionerDatabaseId))
-
-    return {
-      email: user.email,
-      practitionerId: input.practitionerId,
-      practitionerName: targetPractitioner.displayName,
-    }
-  })
 }
 
 export function printProvisionedAuthUserSummary(
