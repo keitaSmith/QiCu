@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 
 import SearchableSelectField from '@/components/ui/SearchableSelectField'
 
@@ -16,6 +17,8 @@ type AdminPractitioner = {
   linkedToUser: boolean
 }
 
+type AdminAccessState = 'checking' | 'allowed' | 'signin-required' | 'denied'
+
 export default function AdminUsersPage() {
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
@@ -27,6 +30,7 @@ export default function AdminUsersPage() {
   const [practitioners, setPractitioners] = useState<AdminPractitioner[]>([])
   const [practitionersLoading, setPractitionersLoading] = useState(true)
   const [practitionersError, setPractitionersError] = useState('')
+  const [adminAccess, setAdminAccess] = useState<AdminAccessState>('checking')
 
   useEffect(() => {
     let cancelled = false
@@ -39,6 +43,16 @@ export default function AdminUsersPage() {
         })
         const data = await response.json().catch(() => null)
 
+        if (response.status === 401) {
+          if (!cancelled) setAdminAccess('signin-required')
+          return
+        }
+
+        if (response.status === 403) {
+          if (!cancelled) setAdminAccess('denied')
+          return
+        }
+
         if (!response.ok) {
           throw new Error(data?.error ?? 'Unable to load practitioners.')
         }
@@ -46,10 +60,12 @@ export default function AdminUsersPage() {
         if (!cancelled) {
           setPractitioners(Array.isArray(data?.practitioners) ? data.practitioners : [])
           setPractitionersError('')
+          setAdminAccess('allowed')
         }
       } catch {
         if (!cancelled) {
           setPractitionersError('Practitioner list is unavailable. Enter a public practitioner ID manually.')
+          setAdminAccess('allowed')
         }
       } finally {
         if (!cancelled) setPractitionersLoading(false)
@@ -107,6 +123,59 @@ export default function AdminUsersPage() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (adminAccess === 'checking') {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wide text-brand-700">Admin</p>
+          <h1 className="mt-2 text-2xl font-semibold text-ink">Create practitioner login</h1>
+        </div>
+        <div className="rounded-lg border border-brand-300/30 bg-surface p-6 text-sm text-ink/70 shadow-sm">
+          Checking admin access...
+        </div>
+      </div>
+    )
+  }
+
+  if (adminAccess === 'signin-required') {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wide text-brand-700">Admin</p>
+          <h1 className="mt-2 text-2xl font-semibold text-ink">Sign in required</h1>
+          <p className="mt-2 text-sm text-ink/70">
+            Please sign in with an admin account to manage practitioner logins.
+          </p>
+        </div>
+        <div className="rounded-lg border border-brand-300/30 bg-surface p-6 shadow-sm">
+          <Link
+            href="/login?next=/dashboard/admin/users"
+            className="inline-flex rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-surface shadow-sm hover:bg-brand-800"
+          >
+            Sign in
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  if (adminAccess === 'denied') {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wide text-brand-700">Admin</p>
+          <h1 className="mt-2 text-2xl font-semibold text-ink">Admin access required</h1>
+          <p className="mt-2 text-sm text-ink/70">
+            Your account does not have permission to manage users.
+          </p>
+        </div>
+        <div className="rounded-lg border border-amber-300/50 bg-amber-50 p-6 text-sm text-amber-900 shadow-sm">
+          Ask an existing admin to grant access before using this page.
+        </div>
+      </div>
+    )
   }
 
   return (
