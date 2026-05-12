@@ -304,6 +304,13 @@ Local development auth fixture note:
 - The fixture refuses to run in production, hashes the password with the existing auth helper, and links `dev@qicu.local` to the existing seeded practitioner `prac-keita-smith`.
 - The local-only password is documented in the H readiness doc for development testing only. Production user creation still needs a real signup, invite, or admin provisioning flow.
 
+Post-auth strict-mode checkpoint note:
+
+- The strict browser flow was smoke-tested locally: `/dashboard` redirects to `/login` when logged out in strict mode, the dev fixture account logs in, dashboard domain pages load without `401`, and logout returns to `/login`.
+- Production readiness is now tracked in `docs/auth-production-readiness-checklist.md`.
+- Production must keep `QICU_AUTH_ENFORCEMENT=strict`, use HTTPS, configure production PostgreSQL, set `GOOGLE_TOKEN_ENCRYPTION_KEY` before Google token paths are used, and avoid the dev auth fixture/demo fallback.
+- Remaining production auth work includes signup/invite/admin provisioning, password reset/email verification, broader CSRF/origin handling for cookie-authenticated mutating routes, optional middleware/page redirects, and production-only demo fallback removal.
+
 ## Repository naming and responsibilities
 
 | Repository | Responsibility | Example methods | Current store/API equivalent |

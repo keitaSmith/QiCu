@@ -642,3 +642,18 @@ Manual strict-mode smoke test:
 6. Confirm the dashboard loads as the linked practitioner and the profile menu sign-out returns to `/login`.
 
 Future production user creation should use a real signup, invite, or admin provisioning flow. Do not use the local fixture credentials outside local development.
+
+## Post-Auth Strict-Mode Smoke Checkpoint
+
+The strict-mode browser flow has been smoke-tested locally:
+
+- `QICU_AUTH_ENFORCEMENT=strict` was enabled.
+- `/dashboard` redirected to `/login` while logged out.
+- The local dev auth fixture credentials signed in successfully.
+- The dashboard loaded as the linked practitioner.
+- Patients, bookings, sessions, services, and Trash loaded without `401` responses.
+- Profile-menu logout returned the browser to `/login`.
+
+The local fixture remains development-only. It refuses to run in production, hashes the password through the existing password helper, stores no plaintext password, links the dev user to `prac-keita-smith`, and is idempotent.
+
+Production readiness is tracked in `docs/auth-production-readiness-checklist.md`. Production should set `QICU_AUTH_ENFORCEMENT=strict`, use HTTPS, configure production PostgreSQL, set `GOOGLE_TOKEN_ENCRYPTION_KEY` before Google token paths are used, avoid demo fallback, and provision real users through a future signup/invite/admin flow.
