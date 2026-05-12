@@ -108,5 +108,5 @@ Production auth hardening note:
 - Add password reset and email verification flows.
 - Add a full CSRF-token strategy if the product needs stronger browser form protections beyond SameSite cookies and the shared origin/fetch-metadata guard.
 - Decide whether to add middleware/page-level redirects for protected dashboard pages.
-- Build a production operator runbook around explicit auth mode, user provisioning, and recovery steps.
 - Add production account management and operator runbooks.
+- See `docs/production-operator-runbook.md` for the operator checklist, provisioning steps, smoke tests, Google setup, and troubleshooting guidance.

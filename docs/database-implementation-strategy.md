@@ -289,6 +289,7 @@ Phase H.6 completion audit note:
 - Dashboard session mode uses `/api/auth/me`, sends cookies, and omits `x-qicu-practitioner-id`; demo mode remains explicit for local development/tests.
 - Strict mode now provides the authenticated production path: protected practitioner-scoped API routes resolve session-derived public practitioner scope and return clean `401`/`403` errors when auth scope is missing or invalid.
 - Production should set `QICU_AUTH_ENFORCEMENT=strict`, use HTTPS, avoid demo fallback, set `GOOGLE_TOKEN_ENCRYPTION_KEY` before Google token paths are used, and consider CSRF-token hardening if QiCu needs stronger protection than SameSite cookies plus the shared origin/fetch-metadata guard.
+- The production operator runbook now lives in `docs/production-operator-runbook.md` and covers deployment, provisioning, smoke testing, Google setup, and recovery.
 - Remaining auth work is product/UX hardening: login page/redirects, signup/invite, password reset, email verification, optional CSRF token strategy, optional middleware redirects, and production runbooks.
 
 Strict browser login flow note:
